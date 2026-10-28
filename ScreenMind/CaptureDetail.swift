@@ -50,7 +50,7 @@ struct CaptureDetail: View {
                         }
                     }
                     if intent == .act {
-                        Section("צעד קטן שאפשר לבצע") {
+                        Section {
                             TextField("למשל: להשוות בין שני הדגמים", text: $taskTitle, axis: .vertical)
                                 .lineLimit(1...3)
                             Toggle("לקבוע תאריך יעד", isOn: $hasDueDate)
@@ -60,6 +60,8 @@ struct CaptureDetail: View {
                                     library.update(id) { $0.taskCompletedAt = $0.taskCompletedAt == nil ? Date() : nil }
                                 }.disabled(library.busy)
                             }
+                        } header: {
+                            Text("צעד קטן שאפשר לבצע")
                         } footer: {
                             Text("הפעולה תופיע בלשונית ״הצעד הבא״ אחרי השמירה. תאריך יעד אינו מפעיל התראה.")
                         }
@@ -165,3 +167,4 @@ final class ImageScrollView: UIScrollView, UIScrollViewDelegate {
     }
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 }
+
