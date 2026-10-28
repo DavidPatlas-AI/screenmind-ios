@@ -1,0 +1,31 @@
+{
+  "bundle": "app.screenmind.next",
+  "group": "group.app.screenmind.next",
+  "projectID": "9DE16DD74F3D4ACF0A5101CC",
+  "appID": "FE0289A217903CA7910059BF",
+  "shareID": "055625396203000B57D3F610",
+  "testID": "653D801C27E3BF3AF30657C0",
+  "appFiles": [
+    "Shared/Capture.swift",
+    "Shared/Vault.swift",
+    "Shared/BackupArchive.swift",
+    "ScreenMind/ScreenMindApp.swift",
+    "ScreenMind/NativeLibrary.swift",
+    "ScreenMind/PhotoService.swift",
+    "ScreenMind/TextRecognition.swift",
+    "ScreenMind/NativeHome.swift",
+    "ScreenMind/NativeActions.swift",
+    "ScreenMind/LibraryViews.swift",
+    "ScreenMind/ReviewFlow.swift",
+    "ScreenMind/CaptureDetail.swift",
+    "ScreenMind/CleanupView.swift"
+  ],
+  "shareFiles": [
+    "Shared/Capture.swift",
+    "Shared/Vault.swift",
+    "ShareExtension/ShareViewController.swift"
+  ],
+  "testFiles": [
+    "ScreenMindTests/ScreenMindTests.swift"
+  ]
+}
