@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const personal = process.env.SCREENMIND_PERSONAL === "1";
 const bundle = process.env.SCREENMIND_BUNDLE_ID || "app.screenmind.next";
 const group = process.env.SCREENMIND_APP_GROUP || "group.app.screenmind.next";
 const team = process.env.SCREENMIND_TEAM_ID || "";
@@ -31,9 +32,9 @@ const phases=(target,files,resources=[])=>{
  const resourcePhase=add("resources:"+target,{isa:"PBXResourcesBuildPhase",buildActionMask:2147483647,files:resources.map(ref=>add("resource:"+target+":"+ref,{isa:"PBXBuildFile",fileRef:ref})),runOnlyForDeploymentPostprocessing:0});
  return [sources,frameworks,resourcePhase];
 };
-const common={SWIFT_VERSION:"5.0",IPHONEOS_DEPLOYMENT_TARGET:"17.0",SDKROOT:"iphoneos",CLANG_ENABLE_MODULES:"YES",CODE_SIGN_STYLE:"Automatic",TARGETED_DEVICE_FAMILY:"1,2",SWIFT_STRICT_CONCURRENCY:"minimal",...(team?{DEVELOPMENT_TEAM:team}:{})};
+const common={SWIFT_VERSION:"5.0",IPHONEOS_DEPLOYMENT_TARGET:"17.0",SDKROOT:"iphoneos",CLANG_ENABLE_MODULES:"YES",CODE_SIGN_STYLE:"Automatic",TARGETED_DEVICE_FAMILY:"1,2",SWIFT_STRICT_CONCURRENCY:"minimal",...(personal?{SWIFT_ACTIVE_COMPILATION_CONDITIONS:"SCREENMIND_PERSONAL"}:{}),...(team?{DEVELOPMENT_TEAM:team}:{})};
 function configurations(name,settings,project=false) {
- const values=["Debug","Release"].map(mode=>add("config:"+name+":"+mode,{isa:"XCBuildConfiguration",name:mode,buildSettings:{...common,...settings,...(mode==="Debug"?{SWIFT_OPTIMIZATION_LEVEL:"-Onone",DEBUG_INFORMATION_FORMAT:"dwarf",ENABLE_TESTABILITY:"YES",SWIFT_ACTIVE_COMPILATION_CONDITIONS:"DEBUG"}:{SWIFT_OPTIMIZATION_LEVEL:"-O",DEBUG_INFORMATION_FORMAT:"dwarf-with-dsym",SWIFT_COMPILATION_MODE:"wholemodule"}),...(project?{CODE_SIGN_STYLE:"Automatic"}:{})}}));
+ const values=["Debug","Release"].map(mode=>add("config:"+name+":"+mode,{isa:"XCBuildConfiguration",name:mode,buildSettings:{...common,...settings,...(mode==="Debug"?{SWIFT_OPTIMIZATION_LEVEL:"-Onone",DEBUG_INFORMATION_FORMAT:"dwarf",ENABLE_TESTABILITY:"YES",SWIFT_ACTIVE_COMPILATION_CONDITIONS:personal?"DEBUG SCREENMIND_PERSONAL":"DEBUG"}:{SWIFT_OPTIMIZATION_LEVEL:"-O",DEBUG_INFORMATION_FORMAT:"dwarf-with-dsym",SWIFT_COMPILATION_MODE:"wholemodule"}),...(project?{CODE_SIGN_STYLE:"Automatic"}:{})}}));
  return add("configList:"+name,{isa:"XCConfigurationList",buildConfigurations:values,defaultConfigurationIsVisible:0,defaultConfigurationName:"Release"});
 }
 const projectID=id("project"),appID=id("target:app"),shareID=id("target:share"),testID=id("target:test");
@@ -52,6 +53,16 @@ function plist(value,depth=0) {
  if(typeof value==="object")return "{\n"+Object.entries(value).map(([k,v])=>next+JSON.stringify(k)+" = "+plist(v,depth+1)+";").join("\n")+"\n"+pad+"}";
  return typeof value==="number"?String(value):JSON.stringify(value);
 }
+if (personal) {
+ objects[appID].buildPhases = objects[appID].buildPhases.filter(phase => phase !== embed);
+ objects[appID].dependencies = [];
+ objects[projectID].targets = [appID, testID];
+ objects[projectID].attributes.TargetAttributes[appID].SystemCapabilities = {};
+ for (const key of objects[objects[appID].buildConfigurationList].buildConfigurations) {
+  objects[key].buildSettings.CODE_SIGN_ENTITLEMENTS = "";
+  objects[key].buildSettings.PRODUCT_BUNDLE_IDENTIFIER = bundle + ".personal";
+ }
+}
 const projectDir=path.join(root,"ScreenMind.xcodeproj");
 fs.mkdirSync(path.join(projectDir,"xcshareddata","xcschemes"),{recursive:true});
 fs.writeFileSync(path.join(projectDir,"project.pbxproj"),"// !$*UTF8*$!\n"+plist({archiveVersion:1,classes:{},objectVersion:56,objects,rootObject:projectID})+"\n");
@@ -64,3 +75,4 @@ const vaultPath=path.join(root,"Shared/Vault.swift");
 fs.writeFileSync(vaultPath,fs.readFileSync(vaultPath,"utf8").replace(/static let groupID = "[^"]+"/,'static let groupID = "'+group+'"'));
 fs.writeFileSync(path.join(root,"project-manifest.json"),JSON.stringify({bundle,group,projectID,appID,shareID,testID,appFiles,shareFiles,testFiles},null,2)+"\n");
 console.log("Created Xcode project: app, Share Extension, XCTest target. No signing or native compilation performed.");
+
