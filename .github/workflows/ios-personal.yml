@@ -1,0 +1,40 @@
+name: ScreenMind personal iPhone IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: screenmind-personal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  personal:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate standalone personal edition
+        run: SCREENMIND_PERSONAL=1 node scripts/generate-project.mjs
+      - name: Test personal edition on simulator
+        run: bash scripts/ci-simulator.sh
+      - name: Build device IPA for local signing
+        run: bash scripts/build-personal-ipa.sh
+      - name: Upload IPA and installation guide
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenMind-Personal-iPhone
+          path: |
+            personal-output/ScreenMind-Personal-unsigned.ipa
+            personal-output/SHA256.txt
+            INSTALL-IPHONE-WINDOWS.md
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenMind-Personal-verification
+          path: ci-results/
+          retention-days: 14
+
