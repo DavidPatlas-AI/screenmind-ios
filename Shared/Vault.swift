@@ -10,9 +10,13 @@ final class Vault: @unchecked Sendable {
     private let originals: URL
 
     init(rootURL: URL? = nil) throws {
+        #if SCREENMIND_PERSONAL
+        let container = try rootURL ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        #else
         guard let container = rootURL ?? FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.groupID) else {
             throw NativeError.message("לא ניתן לפתוח את הארכיון המשותף. יש להגדיר App Group בשני היעדים ב־Xcode.")
         }
+        #endif
         root = container.appendingPathComponent("ScreenMindVault", isDirectory: true)
         records = root.appendingPathComponent("Records", isDirectory: true)
         originals = root.appendingPathComponent("Originals", isDirectory: true)
@@ -102,3 +106,4 @@ final class Vault: @unchecked Sendable {
         return try result.get()
     }
 }
+
