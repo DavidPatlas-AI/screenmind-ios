@@ -110,6 +110,12 @@ struct NativeSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                #if SCREENMIND_PERSONAL
+                Section("גרסת ניסיון אישית") {
+                    Text("מייבאים צילומים מתוך האפליקציה בכפתור +. בגרסה זו אין הרחבה בתפריט השיתוף.")
+                    Text("יש לרענן את ההתקנה דרך AltStore מדי שבעה ימים. לפני הסרה או החלפת גרסה, ייצא את המקורות ל־Files.")
+                }
+                #endif
                 Section("המרחב שלך") {
                     Label("מקורות וטקסט נשמרים מקומית", systemImage: "externaldrive")
                     Label("ללא חשבון וללא ספק AI חיצוני", systemImage: "lock.shield")
@@ -135,3 +141,4 @@ struct NativeSettingsView: View {
         }
     }
 }
+
