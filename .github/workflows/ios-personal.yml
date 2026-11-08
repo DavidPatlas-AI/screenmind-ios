@@ -1,9 +1,6 @@
 name: ScreenMind personal iPhone IPA
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/ios-personal.yml']
 permissions:
   contents: read
 concurrency:
