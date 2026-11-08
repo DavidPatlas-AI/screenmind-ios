@@ -15,4 +15,3 @@ ditto "$APP" personal-output/Payload/ScreenMind.app
 (cd personal-output && zip -qry ScreenMind-Personal-unsigned.ipa Payload)
 (cd personal-output && shasum -a 256 ScreenMind-Personal-unsigned.ipa > SHA256.txt)
 echo "Device IPA built. Local signing through AltStore is still required." >> "$GITHUB_STEP_SUMMARY"
-
