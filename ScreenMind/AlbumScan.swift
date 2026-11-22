@@ -1,5 +1,6 @@
 import Foundation
 import Photos
+import UIKit
 
 // The full Screenshots pass. It remembers localIdentifiers, keeps a small batch in flight,
 // and never deletes a photo. Cleanup suggestions are a separate, confirmed step.
@@ -453,17 +454,17 @@ extension NativeLibrary {
         }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
         _ = await PhotoService.permission()
-        let plan = PhotoService.deletionPlan(chosen)
-        guard !plan.present.isEmpty || !plan.alreadyGone.isEmpty else {
+        let deletion = PhotoService.deletionPlan(chosen)
+        guard !deletion.present.isEmpty || !deletion.alreadyGone.isEmpty else {
             throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
         }
         noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
         defer { clearActivity(); refresh(); refreshCleanupSummary() }
-        if !plan.present.isEmpty { try await PhotoService.requestDeletion(plan.present.map(\.1)) }
-        for id in plan.present.map(\.0) + plan.alreadyGone {
+        if !deletion.present.isEmpty { try await PhotoService.requestDeletion(deletion.present.map(\.1)) }
+        for id in deletion.present.map(\.0) + deletion.alreadyGone {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
-        if !plan.unresolved.isEmpty {
+        if !deletion.unresolved.isEmpty {
             error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
         }
     }
