@@ -13,18 +13,22 @@ struct NativeHome: View {
     @State private var explainScan = false
     var body: some View {
         TabView(selection: $tab) {
-            NavigationStack { home.navigationTitle("ScreenMind").toolbar { toolbar } }
+            tabPage { home.navigationTitle("ScreenMind").toolbar { toolbar } }
                 .tabItem { Label("בית", systemImage: "house") }.tag(0)
-            NavigationStack {
-                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) })
+            tabPage {
+                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) }, onScan: { explainScan = true })
                     .navigationTitle("הספרייה").toolbar { toolbar }
             }.tabItem { Label("ספרייה", systemImage: "square.stack") }.tag(1)
-            NavigationStack {
+            tabPage {
+                IdeasBrainView(open: { selected = $0 }, onScan: { explainScan = true })
+                    .navigationTitle("המוח").toolbar { toolbar }
+            }.tabItem { Label("המוח", systemImage: "brain.head.profile") }.tag(2)
+            tabPage {
                 NativeCollectionsView(open: { selected = $0 }).navigationTitle("מרחבים").toolbar { toolbar }
-            }.tabItem { Label("מרחבים", systemImage: "folder") }.tag(2)
-            NavigationStack {
+            }.tabItem { Label("מרחבים", systemImage: "folder") }.tag(3)
+            tabPage {
                 NativeActionsView(open: { selected = $0 }).toolbar { toolbar }
-            }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(3)
+            }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(4)
         }
         .onChange(of: picker) { _, items in
             guard !items.isEmpty else { return }
@@ -68,6 +72,13 @@ struct NativeHome: View {
             Text("אפשר לאשר גישה מוגבלת. בסבב נשמרים עד 20 צילומים חדשים מתוך 100 האחרונים הנגישים. מקור מ־iCloud עשוי לדרוש הורדה. לא תתבצע מחיקה.")
         }
     }
+
+    /// The bar sits on each screen inside the stack, so a push keeps it and lists
+    /// can scroll clear. On the `TabView` it would cover the tab bar.
+    private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        NavigationStack { content().safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() } }
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             PhotosPicker(selection: $picker, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
@@ -87,12 +98,6 @@ struct NativeHome: View {
                     Text("פחות לשמור בראש.").font(.largeTitle.weight(.semibold))
                     Text("הדברים שצילמת, והרעיונות שחיכו. עכשיו יש להם מקום.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
-                if library.busy {
-                    HStack { ProgressView(); Text(library.progress).font(.subheadline) }
-                        .padding().frame(maxWidth: .infinity, alignment: .leading)
-                        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-                        .accessibilityElement(children: .combine)
-                }
                 if library.captures.isEmpty {
                     ContentUnavailableView {
                         Label("מתחילים בכמה צילומים.", systemImage: "photo.on.rectangle.angled")
@@ -110,9 +115,21 @@ struct NativeHome: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
                             .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
                     }.buttonStyle(.plain)
+                        .accessibilityLabel(library.pending.isEmpty ? "אין צילומים לסקירה" : "לסקירה")
+                    Button { tab = 2 } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "brain.head.profile").font(.title2)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("המוח של הרעיונות").font(.headline)
+                                Text("נושאים וקשרים ממה שזיהינו ומהכוונה שלך").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward")
+                        }.padding(18).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+                    }.buttonStyle(.plain).accessibilityLabel("המוח של הרעיונות")
                     let actions = library.active.filter { $0.hasTask && $0.reviewedAt != nil && $0.taskCompletedAt == nil }
                     if !actions.isEmpty {
-                        Button { tab = 3 } label: {
+                        Button { tab = 4 } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "checklist").font(.title2)
                                 VStack(alignment: .leading, spacing: 5) {
@@ -181,5 +198,27 @@ struct CaptureTile: View {
             }.background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18)).clipShape(RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel(capture.title)
             .accessibilityValue(selected ? "נבחר" : capture.needsReview ? "ממתין לסקירה" : capture.collection)
+    }
+}
+
+struct ScanProgressBar: View {
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        Group {
+            if library.busy && !library.progress.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(library.progress)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: library.busy)
+        .animation(.snappy, value: library.progress)
     }
 }

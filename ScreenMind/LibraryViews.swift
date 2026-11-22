@@ -3,6 +3,7 @@ struct NativeLibraryView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
     let cleanup: (Set<String>) -> Void
+    var onScan: (() -> Void)? = nil
     var collection: String? = nil
     @State private var query = ""
     @State private var filter = "all"
@@ -28,7 +29,12 @@ struct NativeLibraryView: View {
                 }.pickerStyle(.segmented).onChange(of: filter) { _, _ in selected = [] }
                 if visible.isEmpty {
                     ContentUnavailableView(query.isEmpty ? "יש מקום למשהו טוב." : "נסה מילה אחרת.", systemImage: "square.stack",
-                                           description: Text(query.isEmpty ? "בחר צילומים בכפתור + או שנה מסנן." : "החיפוש לפי הטקסט המזוהה, הכותרת ושם המרחב. אפשר לתקן טקסט מתוך המקור."))
+                                           description: Text(query.isEmpty ? "בחר צילומים בכפתור + או סרוק צילומי מסך. אחר כך אפשר לראות איך הם מתחברים בלשונית המוח." : "החיפוש לפי הטקסט המזוהה, הכותרת ושם המרחב. אפשר לתקן טקסט מתוך המקור."))
+                    if query.isEmpty && collection == nil && filter == "all", let onScan {
+                        Button(action: onScan) {
+                            Label("סרוק צילומי מסך", systemImage: "photo.badge.magnifyingglass")
+                        }.buttonStyle(.bordered).disabled(library.busy)
+                    }
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 16) {
                     ForEach(visible) { capture in
@@ -79,6 +85,7 @@ struct NativeCollectionsView: View {
                 NavigationLink {
                     NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
                         .navigationTitle(collection)
+                        .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
                         .toolbar {
                             ToolbarItem(placement: .bottomBar) {
                                 ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
@@ -98,7 +105,7 @@ struct NativeCollectionsView: View {
                 }
             }
             Section {
-                Text("מרחב מחבר מקורות שבחרת לשייך יחד. אין כאן עדיין שיוך AI או הסקת מסקנות אוטומטית.")
+                Text("מרחב מחבר מקורות שבחרת לשייך יחד. לשונית המוח מקבצת גם לפי מילות המפתח והכוונה, במכשיר ובלי ענן.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }.sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
@@ -119,7 +126,7 @@ struct NativeSettingsView: View {
                 Section("המרחב שלך") {
                     Label("מקורות וטקסט נשמרים מקומית", systemImage: "externaldrive")
                     Label("ללא חשבון וללא ספק AI חיצוני", systemImage: "lock.shield")
-                    Text("Vision של אפל מזהה טקסט במכשיר. תמיכה בשפות ובאיכות הצילום משתנה לפי המכשיר ומערכת ההפעלה. אפשר לתקן הכול.")
+                    Text("עברית ואנגלית מזוהות במכשיר עם Tesseract. כשאין עברית בתמונה, הזיהוי יכול להשתמש ב־Vision. שורת המצב לא נכנסת לטקסט. אפשר לתקן הכול.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("גישה לתמונות") {
