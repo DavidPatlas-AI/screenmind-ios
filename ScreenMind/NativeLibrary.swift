@@ -64,6 +64,18 @@ struct ImportReport: Identifiable, Sendable {
         do { captures = try vault.all() }
         catch { self.error = error.localizedDescription }
     }
+    func noteActivity(_ message: String) {
+        busy = true
+        progress = message
+    }
+    func clearActivity() {
+        busy = false
+        progress = ""
+    }
+    func storeCapture(_ stored: Capture) {
+        if let index = captures.firstIndex(where: { $0.id == stored.id }) { captures[index] = stored }
+        else { captures.insert(stored, at: 0) }
+    }
     @discardableResult func update(_ id: String, change: (inout Capture) -> Void) -> Bool {
         guard let vault else { return false }
         do { try vault.update(id, change: change); refresh(); return true }
