@@ -13,8 +13,6 @@ struct NativeHome: View {
     private enum ScanPrompt { case short, album }
     @State private var scanPrompt: ScanPrompt?
     @State private var albumCleanup = false
-    @State private var confirmSpace = false
-    @State private var reviewSpace = false
     var body: some View {
         TabView(selection: $tab) {
             tabPage { home.navigationTitle("ScreenMind").toolbar { toolbar } }
@@ -73,7 +71,7 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
-        .alert("למחוק את הצילומים שנשמרו?", isPresented: $confirmSpace) {
+        .alert("למחוק את הצילומים שנשמרו?", isPresented: Binding(get: { library.confirmSpaceDeletion }, set: { library.confirmSpaceDeletion = $0 })) {
             Button("העבר לנמחקו לאחרונה", role: .destructive) {
                 Task {
                     do { try await library.deleteOfferedScreenshots() }
@@ -84,7 +82,7 @@ struct NativeHome: View {
         } message: {
             Text("הטקסט נשאר ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
         }
-        .sheet(isPresented: $reviewSpace) {
+        .sheet(isPresented: Binding(get: { library.reviewSpaceCaptures }, set: { library.reviewSpaceCaptures = $0 })) {
             NavigationStack {
                 List(library.captures.filter { library.spaceOffer?.captureIDs.contains($0.id) == true }) { capture in
                     VStack(alignment: .leading, spacing: 4) {
@@ -93,7 +91,7 @@ struct NativeHome: View {
                     }
                 }
                 .navigationTitle("צילומים חדשים")
-                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("סיום") { reviewSpace = false } } }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("סיום") { library.reviewSpaceCaptures = false } } }
             }
         }
         .confirmationDialog(
@@ -114,70 +112,10 @@ struct NativeHome: View {
         }
     }
 
-    /// Insets belong on the navigation stack. On the `TabView` they cover the tab bar,
-    /// and on the root screen they disappear when a collection is pushed.
+    /// The bars sit on each screen inside the stack, so a push keeps them and the
+    /// content can scroll clear. On the `TabView` they would cover the tab bar.
     private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack {
-            content()
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { spaceOfferCard }
-        .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
-    }
-
-    @ViewBuilder private var spaceOfferCard: some View {
-        if let offer = library.spaceOffer {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(offer.headline).font(.headline)
-                Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
-                HStack {
-                    if offer.needsAccess {
-                        Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
-                    } else {
-                        Button("בדוק") { reviewSpace = true }.disabled(offer.captureIDs.isEmpty)
-                        Button("מחק מהתמונות") { confirmSpace = true }
-                    }
-                    Button("השאר") { library.declineSpaceOffer() }
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
-            .accessibilityElement(children: .contain)
-        }
-    }
-
-    private var scanProgress: some View {
-        Group {
-            if library.albumScan.status == .running {
-                VStack(alignment: .leading, spacing: 8) {
-                    ProgressView(value: library.albumScan.fraction)
-                    Text(library.albumScan.progressLine).font(.subheadline).lineLimit(2)
-                        .accessibilityLabel(library.albumScan.progressLine)
-                    if library.albumScan.pausing { Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary) }
-                    HStack {
-                        Button("השהה") { library.pauseAlbumScan() }.disabled(library.albumScan.pausing)
-                        Button("בטל", role: .destructive) { library.cancelAlbumScan() }.disabled(library.albumScan.pausing)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-                .padding(.horizontal, 16)
-            } else if library.busy && !library.progress.isEmpty {
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(.horizontal, 16)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(library.progress)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.snappy, value: library.busy)
-        .animation(.snappy, value: library.progress)
-        .animation(.snappy, value: library.albumScan.status)
+        NavigationStack { content().screenMindBars() }
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
@@ -351,5 +289,76 @@ struct CaptureTile: View {
             }.background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18)).clipShape(RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel(capture.title)
             .accessibilityValue(selected ? "נבחר" : capture.needsReview ? "ממתין לסקירה" : capture.collection)
+    }
+}
+
+extension View {
+    /// Bars live on the screen itself, inside the navigation stack. That keeps them
+    /// after a push, lets lists scroll clear, and leaves a bottom toolbar above the scan bar.
+    func screenMindBars() -> some View {
+        safeAreaInset(edge: .top, spacing: 0) { SpaceOfferBar() }
+            .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
+    }
+}
+
+struct SpaceOfferBar: View {
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        if let offer = library.spaceOffer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(offer.headline).font(.headline)
+                Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    if offer.needsAccess {
+                        Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
+                    } else {
+                        Button("בדוק") { library.reviewSpaceCaptures = true }.disabled(offer.captureIDs.isEmpty)
+                        Button("מחק מהתמונות") { library.confirmSpaceDeletion = true }
+                    }
+                    Button("השאר") { library.declineSpaceOffer() }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
+struct ScanProgressBar: View {
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        Group {
+            if library.albumScan.status == .running {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: library.albumScan.fraction)
+                    Text(library.albumScan.progressLine).font(.subheadline).lineLimit(2)
+                        .accessibilityLabel(library.albumScan.progressLine)
+                    if library.albumScan.pausing { Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary) }
+                    HStack {
+                        Button("השהה") { library.pauseAlbumScan() }.disabled(library.albumScan.pausing)
+                        Button("בטל", role: .destructive) { library.cancelAlbumScan() }.disabled(library.albumScan.pausing)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 16)
+            } else if library.busy && !library.progress.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(library.progress)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: library.busy)
+        .animation(.snappy, value: library.progress)
+        .animation(.snappy, value: library.albumScan.status)
     }
 }

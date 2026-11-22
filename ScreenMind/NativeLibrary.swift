@@ -32,6 +32,8 @@ struct ImportReport: Identifiable, Sendable {
     @Published var albumScan = AlbumScanSnapshot()
     @Published var cleanupSummary = CleanupSummary()
     @Published var spaceOffer: SpaceOffer?
+    @Published var confirmSpaceDeletion = false
+    @Published var reviewSpaceCaptures = false
     var spaceOfferDismissed = false
     var albumLedger = ScanLedger()
     let scanGate = ScanGate()
