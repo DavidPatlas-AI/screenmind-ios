@@ -106,7 +106,7 @@ struct IdeasBrainView: View {
             .overlay {
                 ForEach(scene.placements) { placement in
                     if let node = graph.node(placement.id) {
-                        Button { activate(node) } label: { Color.clear }
+                        Button { activate(node) } label: { Color.white.opacity(0.001) }
                             .frame(width: placement.width, height: placement.height)
                             .position(x: placement.center.x, y: placement.center.y)
                             .accessibilityLabel(node.accessibilityText)
