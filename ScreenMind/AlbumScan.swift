@@ -257,6 +257,7 @@ extension NativeLibrary {
             self.error = error.localizedDescription
             return
         }
+        if let vault { fingerprintStoredCaptures(vault: vault) }
         let known = Set(captures.compactMap(\.photoIdentifier))
         albumLedger.processed.formUnion(known)
         albumLedger.total = identifiers.count
@@ -286,7 +287,7 @@ extension NativeLibrary {
                 if Task.isCancelled || scanGate.cancel || scanGate.pause { break }
                 let started = Date()
                 var shares: [(Capture, UInt64)] = []
-                await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
+                _ = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
                 done += 1
                 albumLedger.durations.append(Date().timeIntervalSince(started))
                 if albumLedger.durations.count > 30 { albumLedger.durations.removeFirst(albumLedger.durations.count - 30) }
@@ -343,10 +344,17 @@ extension NativeLibrary {
 
     func allowScreenshotAccess() async {
         _ = await PhotoService.permission()
-        guard PhotoService.hasAccess else { return }
+        guard PhotoService.hasAccess, let vault else { return }
         spaceOffer = nil
-        if let vault { await linkUnidentifiedShares(vault: vault) }
-        await captureForegroundScreenshot()
+        var cursor = SpacePromptStore.load(vault)
+        let lookback = Date().addingTimeInterval(-180)
+        if cursor.lastSeenAt == nil || (cursor.lastSeenAt ?? .distantPast) > lookback {
+            cursor.lastSeenAt = lookback
+            SpacePromptStore.save(cursor, vault: vault)
+        }
+        await importFreshScreenshots(after: cursor.lastSeenAt ?? lookback, advanceCursor: true)
+        await linkUnidentifiedShares(vault: vault)
+        refreshSpaceOffer()
     }
 
     func declineSpaceOffer() {
@@ -403,7 +411,11 @@ extension NativeLibrary {
             guard let capture = captures.first(where: { $0.id == prompt.captureID }) else { return true }
             return capture.photoDeletedAt == nil && !CleanupPlan.isImportant(capture)
         }
-        guard !prompts.isEmpty else { spaceOffer = nil; return }
+        guard !prompts.isEmpty else {
+            if spaceOffer?.needsAccess == true, !PhotoService.hasAccess, !spaceOfferDismissed { return }
+            spaceOffer = nil
+            return
+        }
         spaceOffer = SpaceOffer(
             captureIDs: prompts.map(\.captureID),
             estimatedBytes: prompts.reduce(0) { $0 + max($1.estimatedBytes, 0) },
@@ -427,9 +439,12 @@ extension NativeLibrary {
             known: known
         )
         var shares = unidentifiedShareHashes(vault: vault)
+        var blocked: Date?
         for identifier in fresh {
-            await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
-            guard let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
+            let created = stamps.first { $0.identifier == identifier }?.created
+            let saved = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
+            if !saved, let created { blocked = min(blocked ?? created, created) }
+            guard saved, let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
             let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
                 ?? stamps.first { $0.identifier == identifier }.map {
                     SpaceEstimate.bytes(fileBytes: nil, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight)
@@ -442,7 +457,9 @@ extension NativeLibrary {
         }
         guard advanceCursor else { return }
         var cursor = SpacePromptStore.load(vault)
-        if let next = NewShotPlan.nextSeen(newestIndexed: stamps.map(\.created).max(), previous: cursor.lastSeenAt) {
+        if let blocked {
+            cursor.lastSeenAt = blocked.addingTimeInterval(-1)
+        } else if let next = NewShotPlan.nextSeen(newestIndexed: stamps.map(\.created).max(), previous: cursor.lastSeenAt) {
             cursor.lastSeenAt = next
         }
         SpacePromptStore.save(cursor, vault: vault)
@@ -506,7 +523,7 @@ extension NativeLibrary {
         } catch { return }
         let known = Set(captures.compactMap(\.photoIdentifier))
         for stamp in stamps where !known.contains(stamp.identifier) {
-            await ingest(stamp.identifier, vault: vault, shares: &shares, createIfUnmatched: false)
+            _ = await ingest(stamp.identifier, vault: vault, shares: &shares, createIfUnmatched: false)
         }
     }
 
@@ -525,13 +542,23 @@ extension NativeLibrary {
         }
     }
 
-    private func ingest(_ identifier: String, vault: Vault, shares: inout [(Capture, UInt64)], createIfUnmatched: Bool) async {
-        guard let asset = PhotoService.asset(id: identifier) else {
-            if createIfUnmatched {
-                albumLedger.failed.insert(identifier)
-                albumLedger.processed.insert(identifier)
+    private func fingerprintStoredCaptures(vault: Vault) {
+        for capture in captures where albumLedger.fingerprints[capture.id] == nil
+            && capture.photoDeletedAt == nil && !capture.isArchived
+            && !(capture.photoIdentifier ?? "").isEmpty && capture.source != "picker" {
+            autoreleasepool {
+                guard let data = try? vault.original(capture),
+                      let image = UIImage(data: data),
+                      let pixels = ScreenshotPixels.grayscale(image) else { return }
+                albumLedger.fingerprints[capture.id] = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
             }
-            return
+        }
+    }
+
+    @discardableResult
+    private func ingest(_ identifier: String, vault: Vault, shares: inout [(Capture, UInt64)], createIfUnmatched: Bool) async -> Bool {
+        guard let asset = PhotoService.asset(id: identifier) else {
+            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched)
         }
         do {
             let image = try await PhotoService.downscaled(asset, maxPixel: AlbumPlan.maxPixel)
@@ -548,9 +575,10 @@ extension NativeLibrary {
                 storeCapture(stored)
                 albumLedger.processed.insert(identifier)
                 shares.removeAll { $0.0.id == claimed.id }
-                return
+                albumLedger.failed.remove(identifier)
+                return true
             }
-            guard createIfUnmatched else { return }
+            guard createIfUnmatched else { return false }
             let capture = try vault.save(data: encoded, name: "screenshot.jpg", photoIdentifier: identifier, source: "album")
             if let fingerprint { albumLedger.fingerprints[capture.id] = fingerprint }
             var stored = capture
@@ -560,12 +588,22 @@ extension NativeLibrary {
             }
             storeCapture(stored)
             albumLedger.processed.insert(identifier)
+            albumLedger.failed.remove(identifier)
+            return true
         } catch {
-            if createIfUnmatched {
-                albumLedger.failed.insert(identifier)
-                albumLedger.processed.insert(identifier)
-            }
+            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched)
         }
+    }
+
+    /// The first miss stays retryable. The second miss is recorded so the cursor can move on.
+    private func noteFreshFailure(_ identifier: String, createIfUnmatched: Bool) -> Bool {
+        guard createIfUnmatched else { return false }
+        if albumLedger.failed.contains(identifier) {
+            albumLedger.processed.insert(identifier)
+            return true
+        }
+        albumLedger.failed.insert(identifier)
+        return false
     }
 
     /// One share, taken within three minutes, with a nearly identical picture.
