@@ -100,12 +100,12 @@ final class ShareViewController: UIViewController {
             }
             SpacePromptStore.remove(Set(removedCaptures), vault: vault)
         }
-        return removedCaptures.count == batch.captureIDs.count
+        return !batch.links.isEmpty && removedCaptures.count == batch.links.count
     }
 
     private func keep(_ batch: ShareBatch) {
         guard let vault = try? Vault() else { return }
-        SpacePromptStore.remove(Set(batch.captureIDs), vault: vault)
+        SpacePromptStore.keep(Set(batch.captureIDs), vault: vault)
     }
 }
 
@@ -158,9 +158,13 @@ private struct ShareSaveView: View {
                             busy = true
                             let saved = batch ?? ShareBatch()
                             let deleted = await delete(saved)
-                            finished = deleted
-                                ? "הצילום עבר ל״נמחקו לאחרונה״. הטקסט נשאר ב־ScreenMind."
-                                : "המחיקה תחכה לאישור כשתפתח את ScreenMind. הטקסט נשאר."
+                            if deleted && saved.links.count == saved.captureIDs.count {
+                                finished = "הצילום עבר ל״נמחקו לאחרונה״. הטקסט נשאר ב־ScreenMind."
+                            } else if deleted {
+                                finished = "הצילומים שזוהו עברו ל״נמחקו לאחרונה״. בלי מזהה, המחיקה תחכה לפתיחת ScreenMind."
+                            } else {
+                                finished = "המחיקה תחכה לאישור כשתפתח את ScreenMind. הטקסט נשאר."
+                            }
                             busy = false
                         }
                     } label: { Text("מחק מהתמונות").frame(maxWidth: .infinity, minHeight: 36) }

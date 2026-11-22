@@ -125,6 +125,7 @@ struct CleanupPlan: Equatable {
     static func build(captures: [Capture], fingerprints: [String: UInt64]) -> CleanupPlan {
         let indexed = captures.filter { capture in
             !capture.isArchived && capture.photoDeletedAt == nil && !(capture.photoIdentifier ?? "").isEmpty
+                && capture.source != "picker"
         }
         guard !indexed.isEmpty else { return CleanupPlan() }
         var parent = Array(indexed.indices)
@@ -284,7 +285,8 @@ extension NativeLibrary {
             for identifier in batch {
                 if Task.isCancelled || scanGate.cancel || scanGate.pause { break }
                 let started = Date()
-                await ingest(identifier, vault: vault)
+                var shares: [(Capture, UInt64)] = []
+                await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
                 done += 1
                 albumLedger.durations.append(Date().timeIntervalSince(started))
                 if albumLedger.durations.count > 30 { albumLedger.durations.removeFirst(albumLedger.durations.count - 30) }
@@ -343,12 +345,13 @@ extension NativeLibrary {
         _ = await PhotoService.permission()
         guard PhotoService.hasAccess else { return }
         spaceOffer = nil
+        if let vault { await linkUnidentifiedShares(vault: vault) }
         await captureForegroundScreenshot()
     }
 
     func declineSpaceOffer() {
         spaceOfferDismissed = true
-        if let vault { SpacePromptStore.remove(Set(spaceOffer?.captureIDs ?? []), vault: vault) }
+        if let vault { SpacePromptStore.keep(Set(spaceOffer?.captureIDs ?? []), vault: vault) }
         spaceOffer = nil
     }
 
@@ -376,7 +379,7 @@ extension NativeLibrary {
         }
         SpacePromptStore.remove(Set(gone), vault: vault)
         if !plan.unresolved.isEmpty {
-            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
+            throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
         }
     }
 
@@ -387,9 +390,11 @@ extension NativeLibrary {
         guard let since = cursor.lastSeenAt else {
             cursor.lastSeenAt = now
             SpacePromptStore.save(cursor, vault: vault)
+            await linkUnidentifiedShares(vault: vault)
             return
         }
         await importFreshScreenshots(after: since, advanceCursor: true)
+        await linkUnidentifiedShares(vault: vault)
     }
 
     func refreshSpaceOffer() {
@@ -421,8 +426,9 @@ extension NativeLibrary {
             since: after,
             known: known
         )
+        var shares = unidentifiedShareHashes(vault: vault)
         for identifier in fresh {
-            await ingest(identifier, vault: vault)
+            await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
             guard let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
             let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
                 ?? stamps.first { $0.identifier == identifier }.map {
@@ -465,7 +471,7 @@ extension NativeLibrary {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
         if !deletion.unresolved.isEmpty {
-            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
+            throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
         }
     }
 
@@ -489,10 +495,42 @@ extension NativeLibrary {
         albumScan = snapshot
     }
 
-    private func ingest(_ identifier: String, vault: Vault) async {
+    /// Attach a Photos identifier only when one recent share is the same picture.
+    /// The full album pass does not do this, so a similar older shot cannot steal the identifier.
+    private func linkUnidentifiedShares(vault: Vault) async {
+        var shares = unidentifiedShareHashes(vault: vault)
+        guard let oldest = shares.map(\.0.createdAt).min() else { return }
+        let stamps: [PhotoService.ScreenshotStamp]
+        do {
+            stamps = try PhotoService.recentScreenshots(after: oldest.addingTimeInterval(-60), limit: 20)
+        } catch { return }
+        let known = Set(captures.compactMap(\.photoIdentifier))
+        for stamp in stamps where !known.contains(stamp.identifier) {
+            await ingest(stamp.identifier, vault: vault, shares: &shares, createIfUnmatched: false)
+        }
+    }
+
+    private func unidentifiedShareHashes(vault: Vault) -> [(Capture, UInt64)] {
+        captures.compactMap { capture in
+            guard capture.source == "share",
+                  (capture.photoIdentifier ?? "").isEmpty,
+                  capture.photoDeletedAt == nil,
+                  !capture.isArchived else { return nil }
+            return autoreleasepool { () -> (Capture, UInt64)? in
+                guard let data = try? vault.original(capture),
+                      let image = UIImage(data: data),
+                      let pixels = ScreenshotPixels.grayscale(image) else { return nil }
+                return (capture, ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8))
+            }
+        }
+    }
+
+    private func ingest(_ identifier: String, vault: Vault, shares: inout [(Capture, UInt64)], createIfUnmatched: Bool) async {
         guard let asset = PhotoService.asset(id: identifier) else {
-            albumLedger.failed.insert(identifier)
-            albumLedger.processed.insert(identifier)
+            if createIfUnmatched {
+                albumLedger.failed.insert(identifier)
+                albumLedger.processed.insert(identifier)
+            }
             return
         }
         do {
@@ -503,13 +541,16 @@ extension NativeLibrary {
                 return ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
             }
             guard let encoded else { throw NativeError.message("לא הצלחתי להקטין את הצילום.") }
-            if let claimed = claimUnidentifiedShare(matching: fingerprint, vault: vault) {
+            if let fingerprint, let created = asset.creationDate,
+               let claimed = claimShare(fingerprint: fingerprint, created: created, shares: shares) {
                 let stored = try vault.update(claimed.id) { $0.photoIdentifier = identifier }
-                if let fingerprint { albumLedger.fingerprints[stored.id] = fingerprint }
+                albumLedger.fingerprints[stored.id] = fingerprint
                 storeCapture(stored)
                 albumLedger.processed.insert(identifier)
+                shares.removeAll { $0.0.id == claimed.id }
                 return
             }
+            guard createIfUnmatched else { return }
             let capture = try vault.save(data: encoded, name: "screenshot.jpg", photoIdentifier: identifier, source: "album")
             if let fingerprint { albumLedger.fingerprints[capture.id] = fingerprint }
             var stored = capture
@@ -520,25 +561,20 @@ extension NativeLibrary {
             storeCapture(stored)
             albumLedger.processed.insert(identifier)
         } catch {
-            albumLedger.failed.insert(identifier)
-            albumLedger.processed.insert(identifier)
+            if createIfUnmatched {
+                albumLedger.failed.insert(identifier)
+                albumLedger.processed.insert(identifier)
+            }
         }
     }
 
-    /// A share save keeps the original bytes and may have no Photos identifier.
-    /// The later album copy is a smaller JPEG, so match the picture instead of the file hash.
-    private func claimUnidentifiedShare(matching fingerprint: UInt64?, vault: Vault) -> Capture? {
-        guard let fingerprint else { return nil }
-        for capture in captures where capture.source == "share"
-            && (capture.photoIdentifier ?? "").isEmpty
-            && capture.photoDeletedAt == nil
-            && !capture.isArchived {
-            guard let data = try? vault.original(capture),
-                  let image = UIImage(data: data),
-                  let pixels = ScreenshotPixels.grayscale(image) else { continue }
-            let hash = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
-            if ImageFingerprint.hamming(hash, fingerprint) <= ImageFingerprint.nearDistance { return capture }
+    /// One share, taken within three minutes, with a nearly identical picture.
+    private func claimShare(fingerprint: UInt64, created: Date, shares: [(Capture, UInt64)]) -> Capture? {
+        let matches = shares.filter { share, hash in
+            abs(share.createdAt.timeIntervalSince(created)) <= 180
+                && ImageFingerprint.hamming(hash, fingerprint) <= 2
         }
-        return nil
+        guard matches.count == 1 else { return nil }
+        return matches[0].0
     }
 }

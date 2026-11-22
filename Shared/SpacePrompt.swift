@@ -53,6 +53,28 @@ enum SpaceEstimate {
 struct SpaceCursor: Codable, Equatable {
     var prompts: [SpacePrompt] = []
     var lastSeenAt: Date?
+    /// Captures the person already chose to leave in Photos.
+    var keptCaptureIDs: [String] = []
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case prompts, lastSeenAt, keptCaptureIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prompts = try container.decodeIfPresent([SpacePrompt].self, forKey: .prompts) ?? []
+        lastSeenAt = try container.decodeIfPresent(Date.self, forKey: .lastSeenAt)
+        keptCaptureIDs = try container.decodeIfPresent([String].self, forKey: .keptCaptureIDs) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(prompts, forKey: .prompts)
+        try container.encodeIfPresent(lastSeenAt, forKey: .lastSeenAt)
+        try container.encode(keptCaptureIDs, forKey: .keptCaptureIDs)
+    }
 }
 
 enum SpacePromptStore {
@@ -70,6 +92,7 @@ enum SpacePromptStore {
 
     static func enqueue(_ prompt: SpacePrompt, vault: Vault) {
         var cursor = load(vault)
+        if cursor.keptCaptureIDs.contains(prompt.captureID) { return }
         cursor.prompts.removeAll { $0.captureID == prompt.captureID }
         cursor.prompts.append(prompt)
         save(cursor, vault: vault)
@@ -78,6 +101,15 @@ enum SpacePromptStore {
     static func remove(_ ids: Set<String>, vault: Vault) {
         var cursor = load(vault)
         cursor.prompts.removeAll { ids.contains($0.captureID) }
+        save(cursor, vault: vault)
+    }
+
+    static func keep(_ ids: Set<String>, vault: Vault) {
+        var cursor = load(vault)
+        cursor.prompts.removeAll { ids.contains($0.captureID) }
+        for id in ids where !cursor.keptCaptureIDs.contains(id) {
+            cursor.keptCaptureIDs.append(id)
+        }
         save(cursor, vault: vault)
     }
 }
@@ -91,10 +123,10 @@ enum NewShotPlan {
         }
     }
 
-    /// Keep the cursor on the newest shot Photos has already listed. Moving it to "now"
-    /// hides a screenshot that was taken but not indexed yet.
+    /// Stay on the newest shot already listed, and never move the cursor backward.
     static func nextSeen(newestIndexed: Date?, previous: Date?) -> Date? {
         guard let newestIndexed else { return previous }
-        return newestIndexed.addingTimeInterval(-1)
+        guard let previous else { return newestIndexed }
+        return max(previous, newestIndexed)
     }
 }

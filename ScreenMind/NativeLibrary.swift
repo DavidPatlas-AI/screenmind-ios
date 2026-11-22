@@ -166,9 +166,12 @@ struct ImportReport: Identifiable, Sendable {
         }
     }
     func rerecognize(_ id: String) async {
-        guard !busy, let vault, let capture = captures.first(where: { $0.id == id }) else { return }
+        guard !busy, !scanLoopActive, let vault, let capture = captures.first(where: { $0.id == id }) else { return }
         busy = true
         progress = "מזהה טקסט מחדש במכשיר…"
+        if let index = captures.firstIndex(where: { $0.id == id }) {
+            captures[index].textStatus = "pending"
+        }
         defer { busy = false; progress = ""; refresh() }
         do { try await recognize(capture, data: vault.original(capture), overwrite: true) }
         catch {
@@ -251,7 +254,7 @@ struct ImportReport: Identifiable, Sendable {
         } catch { self.error = error.localizedDescription }
     }
     func prepareBackup(ids: Set<String>) async throws -> PreparedBackup {
-        guard !busy, let vault else { throw NativeError.message("המתן לסיום הפעולה הנוכחית.") }
+        guard !busy, !scanLoopActive, let vault else { throw NativeError.message("המתן לסיום הפעולה הנוכחית.") }
         let selected = captures.filter { ids.contains($0.id) }
         guard !selected.isEmpty, selected.count <= 20 else { throw NativeError.message("בחר בין מקור אחד ל־20 מקורות.") }
         busy = true; progress = "מכין את המקורות לייצוא…"
