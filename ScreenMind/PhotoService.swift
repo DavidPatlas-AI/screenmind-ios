@@ -141,18 +141,23 @@ enum ScreenshotPixels {
         }
         guard let cgImage = small.cgImage else { return nil }
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
-        guard let context = CGContext(
-            data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         var gray: [UInt8] = []
         gray.reserveCapacity(width * height)
-        for index in 0..<(width * height) {
-            let base = index * 4
-            let value = (UInt16(bytes[base]) * 3 + UInt16(bytes[base + 1]) * 6 + UInt16(bytes[base + 2])) / 10
-            gray.append(UInt8(min(value, 255)))
+        let drew = bytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let buffer = raw.bindMemory(to: UInt8.self)
+            for index in 0..<(width * height) {
+                let base = index * 4
+                let value = (UInt16(buffer[base]) * 3 + UInt16(buffer[base + 1]) * 6 + UInt16(buffer[base + 2])) / 10
+                gray.append(UInt8(min(value, 255)))
+            }
+            return true
         }
+        guard drew else { return nil }
         return gray
     }
 }

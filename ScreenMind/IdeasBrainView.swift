@@ -103,13 +103,18 @@ struct IdeasBrainView: View {
     private func canvas(graph: BrainGraph, scene: BrainScene) -> some View {
         BrainCanvas(graph: graph, scene: scene)
             .frame(width: scene.contentWidth, height: max(scene.contentHeight, 280))
-            .contentShape(Rectangle())
-            .gesture(SpatialTapGesture().onEnded { value in
-                let point = BrainPoint(x: value.location.x, y: value.location.y)
-                guard let id = scene.hit(point), let node = graph.node(id) else { return }
-                activate(node)
-            })
-            .accessibilityRepresentation { accessTree(graph: graph, scene: scene) }
+            .overlay {
+                ZStack {
+                    ForEach(scene.placements) { placement in
+                        if let node = graph.node(placement.id) {
+                            Button { activate(node) } label: { Color.white.opacity(0.001) }
+                                .frame(width: placement.width, height: placement.height)
+                                .position(x: placement.center.x, y: placement.center.y)
+                                .accessibilityLabel(node.accessibilityText)
+                        }
+                    }
+                }
+            }
     }
 
     private func activate(_ node: BrainNode) {
@@ -127,18 +132,6 @@ struct IdeasBrainView: View {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) { focusID = id }
     }
 
-    @ViewBuilder private func accessTree(graph: BrainGraph, scene: BrainScene) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if scene.focusID != BrainGraph.rootID {
-                Button("כל המוח") { focus(BrainGraph.rootID) }
-            }
-            ForEach(scene.placements) { placement in
-                if let node = graph.node(placement.id) {
-                    Button(node.accessibilityText) { activate(node) }
-                }
-            }
-        }
-    }
 }
 
 private struct BrainCanvas: View {
@@ -149,20 +142,16 @@ private struct BrainCanvas: View {
         Canvas { context, _ in
             for edge in scene.edges {
                 guard let start = placement(edge.fromID), let end = placement(edge.toID) else { continue }
+                let upper = start.center.y <= end.center.y ? start : end
+                let lower = start.center.y <= end.center.y ? end : start
                 var path = Path()
-                let from = CGPoint(x: start.center.x, y: start.center.y + start.height / 2)
-                let to = CGPoint(x: end.center.x, y: end.center.y - end.height / 2)
+                let from = CGPoint(x: upper.center.x, y: upper.center.y + upper.height / 2)
+                let to = CGPoint(x: lower.center.x, y: lower.center.y - lower.height / 2)
                 let midY = (from.y + to.y) / 2
                 path.move(to: from)
                 path.addCurve(to: to, control1: CGPoint(x: from.x, y: midY), control2: CGPoint(x: to.x, y: midY))
                 let color = edge.semantic ? NativeTheme.accent.opacity(0.7) : Color.secondary.opacity(0.35)
                 context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: edge.semantic ? 2 : 1.25, lineCap: .round))
-                if edge.semantic && !edge.label.isEmpty && scene.edges.filter({ $0.semantic }).count <= 8 {
-                    context.draw(
-                        Text(edge.label).font(.caption2).foregroundStyle(.secondary),
-                        at: CGPoint(x: (from.x + to.x) / 2, y: midY)
-                    )
-                }
             }
             for caption in scene.captions {
                 let rect = CGRect(x: 0, y: caption.y, width: scene.contentWidth, height: 20)
@@ -179,6 +168,19 @@ private struct BrainCanvas: View {
                 let subtitleRect = CGRect(x: rect.minX + 12, y: rect.minY + 38, width: rect.width - 24, height: 22)
                 context.draw(Text(node.title).font(.subheadline.bold()).foregroundStyle(.primary), in: titleRect)
                 context.draw(Text(node.subtitle).font(.caption).foregroundStyle(.secondary), in: subtitleRect)
+            }
+            let semantic = scene.edges.filter { $0.semantic && !$0.label.isEmpty }
+            if semantic.count <= 8 {
+                for edge in semantic {
+                    guard let start = placement(edge.fromID), let end = placement(edge.toID) else { continue }
+                    let upper = start.center.y <= end.center.y ? start : end
+                    let lower = start.center.y <= end.center.y ? end : start
+                    let midY = (upper.center.y + upper.height / 2 + lower.center.y - lower.height / 2) / 2
+                    context.draw(
+                        Text(edge.label).font(.caption2).foregroundStyle(.secondary),
+                        at: CGPoint(x: (upper.center.x + lower.center.x) / 2, y: midY)
+                    )
+                }
             }
         }
     }

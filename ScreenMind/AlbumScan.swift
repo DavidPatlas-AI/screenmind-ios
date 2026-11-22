@@ -124,6 +124,7 @@ struct CleanupPlan: Equatable {
     static func build(captures: [Capture], fingerprints: [String: UInt64]) -> CleanupPlan {
         let indexed = captures.filter { capture in
             !capture.isArchived && capture.photoDeletedAt == nil && !(capture.photoIdentifier ?? "").isEmpty
+                && capture.source != "picker"
         }
         guard !indexed.isEmpty else { return CleanupPlan() }
         var parent = Array(indexed.indices)
@@ -346,7 +347,7 @@ extension NativeLibrary {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
         if !deletion.unresolved.isEmpty {
-            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
+            throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
         }
     }
 
