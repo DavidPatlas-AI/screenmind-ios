@@ -259,7 +259,9 @@ extension NativeLibrary {
         }
         fingerprintStoredCaptures(vault: vault)
         let known = Set(captures.compactMap(\.photoIdentifier))
-        albumLedger.processed.formUnion(known)
+        for identifier in identifiers where known.contains(identifier) {
+            albumLedger.processed.insert(identifier)
+        }
         albumLedger.total = identifiers.count
         var done = identifiers.reduce(into: 0) { if albumLedger.processed.contains($1) { $0 += 1 } }
         publishAlbumScan(done: done, etaSeconds: nil)
@@ -287,7 +289,7 @@ extension NativeLibrary {
                 if Task.isCancelled || scanGate.cancel || scanGate.pause { break }
                 let started = Date()
                 var shares: [(Capture, UInt64)] = []
-                _ = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
+                _ = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true, holdForRetry: false)
                 done += 1
                 albumLedger.durations.append(Date().timeIntervalSince(started))
                 if albumLedger.durations.count > 30 { albumLedger.durations.removeFirst(albumLedger.durations.count - 30) }
@@ -303,19 +305,19 @@ extension NativeLibrary {
     func pauseAlbumScan() {
         scanGate.pause = true
         albumScan.pausing = true
-        guard !scanLoopActive else { return }
         albumLedger.status = .paused
-        albumScan.pausing = false
+        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
         publishAlbumScan(etaSeconds: nil)
+        guard scanLoopActive else { albumScan.pausing = false; return }
     }
 
     func cancelAlbumScan() {
         scanGate.cancel = true
         albumScan.pausing = true
-        guard !scanLoopActive else { return }
         albumLedger.status = .cancelled
-        albumScan.pausing = false
+        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
         publishAlbumScan(etaSeconds: nil)
+        guard scanLoopActive else { albumScan.pausing = false; return }
     }
 
     func retryFailedAlbumScan() async {
@@ -442,7 +444,7 @@ extension NativeLibrary {
         var blocked: Date?
         for identifier in fresh {
             let created = stamps.first { $0.identifier == identifier }?.created
-            let saved = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true)
+            let saved = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true, holdForRetry: true)
             if !saved, let created { blocked = min(blocked ?? created, created) }
             guard saved, let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
             let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
@@ -515,11 +517,12 @@ extension NativeLibrary {
     /// Attach a Photos identifier only when one recent share is the same picture.
     /// The full album pass does not do this, so a similar older shot cannot steal the identifier.
     private func linkUnidentifiedShares(vault: Vault) async {
+        foldDuplicateShares(vault: vault)
         var shares = unidentifiedShareHashes(vault: vault)
         guard let oldest = shares.map(\.0.createdAt).min() else { return }
         let stamps: [PhotoService.ScreenshotStamp]
         do {
-            stamps = try PhotoService.recentScreenshots(after: oldest.addingTimeInterval(-60), limit: 20)
+            stamps = try PhotoService.recentScreenshots(after: oldest.addingTimeInterval(-180), limit: 20)
         } catch { return }
         let known = Set(captures.compactMap(\.photoIdentifier))
         for stamp in stamps where !known.contains(stamp.identifier) {
@@ -555,10 +558,52 @@ extension NativeLibrary {
         }
     }
 
+    /// A share of a shot the app already saved is the same memory. Keep the shared original and drop the untouched copy.
+    private func foldDuplicateShares(vault: Vault) {
+        let shares = captures.filter { $0.source == "share" && $0.photoDeletedAt == nil && !$0.isArchived }
+        for share in shares {
+            guard captures.contains(where: { $0.id == share.id }),
+                  let shareHash = imageHash(share, vault: vault) else { continue }
+            let matches = captures.filter { other in
+                guard other.id != share.id, other.photoDeletedAt == nil, !other.isArchived,
+                      other.source == "album" || other.source == "scan",
+                      other.reviewedAt == nil, !other.isFavorite, !other.hasTask,
+                      abs(other.createdAt.timeIntervalSince(share.createdAt)) <= 180 else { return false }
+                let shareID = share.photoIdentifier ?? ""
+                let otherID = other.photoIdentifier ?? ""
+                if !shareID.isEmpty, !otherID.isEmpty { return shareID == otherID }
+                guard let hash = imageHash(other, vault: vault) else { return false }
+                return ImageFingerprint.hamming(hash, shareHash) <= 2
+            }
+            guard matches.count == 1, let auto = matches.first else { continue }
+            if (share.photoIdentifier ?? "").isEmpty, let photoID = auto.photoIdentifier, !photoID.isEmpty,
+               let stored = try? vault.update(share.id, change: { $0.photoIdentifier = photoID }) {
+                storeCapture(stored)
+            }
+            if let hash = albumLedger.fingerprints[auto.id] { albumLedger.fingerprints[share.id] = hash }
+            albumLedger.fingerprints.removeValue(forKey: auto.id)
+            try? vault.delete(id: auto.id)
+            SpacePromptStore.remove([auto.id], vault: vault)
+            captures.removeAll { $0.id == auto.id }
+        }
+    }
+
+    private func imageHash(_ capture: Capture, vault: Vault) -> UInt64? {
+        if let stored = albumLedger.fingerprints[capture.id] { return stored }
+        return autoreleasepool { () -> UInt64? in
+            guard let data = try? vault.original(capture),
+                  let image = UIImage(data: data),
+                  let pixels = ScreenshotPixels.grayscale(image) else { return nil }
+            let hash = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
+            albumLedger.fingerprints[capture.id] = hash
+            return hash
+        }
+    }
+
     @discardableResult
-    private func ingest(_ identifier: String, vault: Vault, shares: inout [(Capture, UInt64)], createIfUnmatched: Bool) async -> Bool {
+    private func ingest(_ identifier: String, vault: Vault, shares: inout [(Capture, UInt64)], createIfUnmatched: Bool, holdForRetry: Bool = false) async -> Bool {
         guard let asset = PhotoService.asset(id: identifier) else {
-            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched)
+            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched, holdForRetry: holdForRetry)
         }
         do {
             let image = try await PhotoService.downscaled(asset, maxPixel: AlbumPlan.maxPixel)
@@ -591,19 +636,20 @@ extension NativeLibrary {
             albumLedger.failed.remove(identifier)
             return true
         } catch {
-            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched)
+            return noteFreshFailure(identifier, createIfUnmatched: createIfUnmatched, holdForRetry: holdForRetry)
         }
     }
 
-    /// The first miss stays retryable. The second miss is recorded so the cursor can move on.
-    private func noteFreshFailure(_ identifier: String, createIfUnmatched: Bool) -> Bool {
+    /// A fresh import can wait for the next open. An album pass records the miss immediately so it is not downloaded twice.
+    private func noteFreshFailure(_ identifier: String, createIfUnmatched: Bool, holdForRetry: Bool) -> Bool {
         guard createIfUnmatched else { return false }
-        if albumLedger.failed.contains(identifier) {
-            albumLedger.processed.insert(identifier)
-            return true
+        if holdForRetry, !albumLedger.failed.contains(identifier) {
+            albumLedger.failed.insert(identifier)
+            return false
         }
         albumLedger.failed.insert(identifier)
-        return false
+        albumLedger.processed.insert(identifier)
+        return true
     }
 
     /// One share, taken within three minutes, with a nearly identical picture.

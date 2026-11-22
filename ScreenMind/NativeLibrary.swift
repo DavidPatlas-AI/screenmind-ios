@@ -58,7 +58,8 @@ struct ImportReport: Identifiable, Sendable {
                 ScanLedgerStore.save(albumLedger, vault: opened)
             }
             refresh()
-            publishAlbumScan(done: albumLedger.processed.count)
+            let storedDone = albumLedger.total > 0 ? min(albumLedger.processed.count, albumLedger.total) : 0
+            publishAlbumScan(done: storedDone)
             refreshCleanupSummary()
         } catch { self.error = error.localizedDescription }
         hebrewRecognitionSupported = TextRecognition.hebrewDataAvailable
@@ -144,6 +145,8 @@ struct ImportReport: Identifiable, Sendable {
         if AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy {
             refreshSpaceOffer()
             await scanAllScreenshots()
+            await catchNewScreenshots()
+            refreshSpaceOffer()
             return
         }
         await catchNewScreenshots()

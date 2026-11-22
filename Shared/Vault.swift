@@ -37,6 +37,12 @@ final class Vault: @unchecked Sendable {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
     func originalURL(_ capture: Capture) -> URL { originals.appendingPathComponent(capture.id + ".original") }
+    func delete(id: String) throws {
+        let record = try recordURL(id)
+        let original = originals.appendingPathComponent(id + ".original")
+        if FileManager.default.fileExists(atPath: record.path) { try FileManager.default.removeItem(at: record) }
+        if FileManager.default.fileExists(atPath: original.path) { try FileManager.default.removeItem(at: original) }
+    }
     func original(_ capture: Capture) throws -> Data {
         _ = try recordURL(capture.id)
         let data = try Data(contentsOf: originalURL(capture))
