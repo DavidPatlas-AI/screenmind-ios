@@ -16,15 +16,19 @@ struct NativeHome: View {
             NavigationStack { home.navigationTitle("ScreenMind").toolbar { toolbar } }
                 .tabItem { Label("בית", systemImage: "house") }.tag(0)
             NavigationStack {
-                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) })
+                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) }, onScan: { explainScan = true })
                     .navigationTitle("הספרייה").toolbar { toolbar }
             }.tabItem { Label("ספרייה", systemImage: "square.stack") }.tag(1)
             NavigationStack {
+                IdeasBrainView(open: { selected = $0 }, onScan: { explainScan = true })
+                    .navigationTitle("המוח").toolbar { toolbar }
+            }.tabItem { Label("המוח", systemImage: "brain.head.profile") }.tag(2)
+            NavigationStack {
                 NativeCollectionsView(open: { selected = $0 }).navigationTitle("מרחבים").toolbar { toolbar }
-            }.tabItem { Label("מרחבים", systemImage: "folder") }.tag(2)
+            }.tabItem { Label("מרחבים", systemImage: "folder") }.tag(3)
             NavigationStack {
                 NativeActionsView(open: { selected = $0 }).toolbar { toolbar }
-            }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(3)
+            }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(4)
         }
         .onChange(of: picker) { _, items in
             guard !items.isEmpty else { return }
@@ -61,6 +65,24 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
+        .safeAreaInset(edge: .bottom, spacing: 8) {
+            Group {
+                if library.busy && !library.progress.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 16)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(library.progress)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: library.busy)
+            .animation(.snappy, value: library.progress)
+        }
         .confirmationDialog("סריקה רק של הצילומים שתאפשר", isPresented: $explainScan, titleVisibility: .visible) {
             Button("אפשר גישה וסרוק") { Task { await library.scanScreenshots() } }
             Button("ביטול", role: .cancel) {}
@@ -87,12 +109,6 @@ struct NativeHome: View {
                     Text("פחות לשמור בראש.").font(.largeTitle.weight(.semibold))
                     Text("הדברים שצילמת, והרעיונות שחיכו. עכשיו יש להם מקום.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
-                if library.busy {
-                    HStack { ProgressView(); Text(library.progress).font(.subheadline) }
-                        .padding().frame(maxWidth: .infinity, alignment: .leading)
-                        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18))
-                        .accessibilityElement(children: .combine)
-                }
                 if library.captures.isEmpty {
                     ContentUnavailableView {
                         Label("מתחילים בכמה צילומים.", systemImage: "photo.on.rectangle.angled")
@@ -110,9 +126,20 @@ struct NativeHome: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
                             .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
                     }.buttonStyle(.plain)
+                    Button { tab = 2 } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "brain.head.profile").font(.title2)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("המוח של הרעיונות").font(.headline)
+                                Text("נושאים וקשרים ממה שזיהינו ומהכוונה שלך").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward")
+                        }.padding(18).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+                    }.buttonStyle(.plain)
                     let actions = library.active.filter { $0.hasTask && $0.reviewedAt != nil && $0.taskCompletedAt == nil }
                     if !actions.isEmpty {
-                        Button { tab = 3 } label: {
+                        Button { tab = 4 } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: "checklist").font(.title2)
                                 VStack(alignment: .leading, spacing: 5) {

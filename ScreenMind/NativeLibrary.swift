@@ -76,6 +76,7 @@ struct ImportReport: Identifiable, Sendable {
         let items = captures.filter { $0.textStatus == "pending" }.prefix(20)
         guard !items.isEmpty else { return }
         busy = true
+        progress = "מזהה טקסט במכשיר…"
         defer { busy = false; progress = ""; refresh() }
         for (index, capture) in items.enumerated() {
             progress = "מזהה טקסט במכשיר · \(index + 1) מתוך \(items.count)"
@@ -113,6 +114,7 @@ struct ImportReport: Identifiable, Sendable {
     func importPicker(_ items: [PhotosPickerItem]) async {
         guard !busy, let vault, !items.isEmpty else { return }
         busy = true
+        progress = "שומר את הצילומים שנבחרו…"
         var saved = 0, duplicates = 0, failures = 0
         var reviewIDs: [String] = []
         defer { busy = false; progress = ""; refresh(); report = ImportReport(saved: saved, duplicates: duplicates, failures: failures, reviewIDs: reviewIDs) }
@@ -144,19 +146,26 @@ struct ImportReport: Identifiable, Sendable {
     func scanScreenshots() async {
         guard !busy, let vault else { return }
         busy = true
+        progress = "מבקש גישה לצילומי מסך…"
         var saved = 0, duplicates = 0, failures = 0
         var reviewIDs: [String] = []
         defer { busy = false; progress = ""; refresh(); report = ImportReport(saved: saved, duplicates: duplicates, failures: failures, reviewIDs: reviewIDs) }
         _ = await PhotoService.permission()
+        progress = "מחפש צילומי מסך חדשים…"
+        await Task.yield()
         do {
             let known = Set(captures.compactMap(\.photoIdentifier))
-            let assets = try PhotoService.screenshots().filter { !known.contains($0.localIdentifier) }.prefix(20)
-            for (index, asset) in assets.enumerated() {
-                progress = "שומר צילום · \(index + 1) מתוך \(assets.count)"
+            let identifiers = try await Task.detached(priority: .userInitiated) {
+                try PhotoService.screenshots().map(\.localIdentifier)
+            }.value.filter { !known.contains($0) }
+            let pending = Array(identifiers.prefix(20))
+            for (index, identifier) in pending.enumerated() {
+                progress = "שומר צילום · \(index + 1) מתוך \(pending.count)"
+                guard let asset = PhotoService.asset(id: identifier) else { failures += 1; continue }
                 do {
                     let (bytes, name) = try await PhotoService.original(asset)
                     let existed = captures.contains { $0.id == Vault.hash(bytes) }
-                    let capture = try vault.save(data: bytes, name: name, photoIdentifier: asset.localIdentifier, source: "scan")
+                    let capture = try vault.save(data: bytes, name: name, photoIdentifier: identifier, source: "scan")
                     if capture.needsReview && !reviewIDs.contains(capture.id) { reviewIDs.append(capture.id) }
                     refresh()
                     if existed { duplicates += 1 } else { saved += 1 }

@@ -35,7 +35,7 @@ struct CaptureDetail: View {
                         }.buttonStyle(.plain)
                     } footer: {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(capture.textStatus == "complete" ? "הטקסט זוהה במכשיר. כדאי לבדוק שמות, סכומים ותאריכים מול המקור." : "המקור נשמר גם אם לא זוהה טקסט. אפשר להוסיף תיאור ידנית.")
+                            Text(recognitionNote(capture))
                             if library.hebrewRecognitionSupported == false {
                                 Text("קובצי העברית לזיהוי לא נמצאו באפליקציה, והטקסט עלול להיות חסר.")
                             }
@@ -124,6 +124,15 @@ struct CaptureDetail: View {
             } else {
                 ContentUnavailableView("המקור אינו זמין.", systemImage: "photo")
             }
+        }
+    }
+    private func recognitionNote(_ capture: Capture) -> String {
+        switch capture.textStatus {
+        case "pending": return "מזהים את הטקסט במכשיר… המקור כבר שמור, ואפשר להמשיך לערוך."
+        case "failed": return "הזיהוי לא הושלם. המקור שמור, ואפשר לזהות מחדש או להוסיף תיאור ידנית."
+        case "noText": return "לא נמצא טקסט בתמונה. אפשר להוסיף תיאור ידנית."
+        case "complete": return "הטקסט זוהה במכשיר. כדאי לבדוק שמות, סכומים ותאריכים מול המקור."
+        default: return "המקור נשמר. אפשר להוסיף תיאור ידנית."
         }
     }
     private func save(approve: Bool) {

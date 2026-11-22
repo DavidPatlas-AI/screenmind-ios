@@ -133,4 +133,102 @@ import UIKit
         XCTAssertFalse(letters.contains("םלועםולש"), result.text)
         XCTAssertTrue(result.hebrewSupported)
     }
+    func testBrainGroupsSpacesKeywordsAndIntentWithoutTheArchive() {
+        let now = Date(timeIntervalSince1970: 1_763_769_600)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let homeTable = idea("home-table", title: "שולחן אלון", text: "מידות פסטה", collection: "הבית", at: now)
+        let homeLamp = idea("home-lamp", title: "מנורה", text: "אור חם", collection: "הבית", at: now.addingTimeInterval(10))
+        let pastaA = idea("pasta-a", title: "ספק פסטה", text: "מחיר", intent: .act, at: now.addingTimeInterval(20))
+        let pastaB = idea("pasta-b", title: "פסטה סדנה", text: "מתכון", intent: .act, at: now.addingTimeInterval(30))
+        let supplier = idea("supplier", title: "ספק אחר", text: "טלפון", at: now.addingTimeInterval(40))
+        let extra = idea("extra", title: "ספק נוסף", text: "טלפון", at: now.addingTimeInterval(45))
+        let leftover = idea("leftover", title: "של החשבון", text: "את את", at: now.addingTimeInterval(50))
+        var archived = idea("archived", title: "פסטה ישנה", text: "פסטה", collection: "הבית", at: now)
+        archived.isArchived = true
+        let graph = BrainGraph.build(from: [homeTable, homeLamp, pastaA, pastaB, supplier, extra, leftover, archived], now: now, calendar: calendar)
+
+        let home = try XCTUnwrap(graph.node("topic:space:הבית"))
+        XCTAssertEqual(home.count, 2)
+        XCTAssertEqual(graph.childIDs[home.id]?.count, 2)
+        XCTAssertFalse(graph.nodes.values.contains { $0.captureID == archived.id })
+
+        let pasta = try XCTUnwrap(graph.node("topic:word:פסטה"))
+        XCTAssertEqual(Set(graph.childIDs[pasta.id] ?? []), Set(["item:pasta-a", "item:pasta-b"]))
+        XCTAssertEqual(Set(graph.childIDs["topic:word:ספק"] ?? []), Set(["item:supplier", "item:extra"]))
+        XCTAssertEqual(graph.node(BrainGraph.openTopicID)?.title, "רעיונות פתוחים")
+        XCTAssertEqual(graph.childIDs[BrainGraph.openTopicID], ["item:leftover"])
+        XCTAssertTrue(graph.links.contains { $0.label == "פסטה" && Set([$0.fromID, $0.toID]) == Set([home.id, pasta.id]) })
+        XCTAssertTrue(graph.links.allSatisfy { degree($0.fromID, graph) <= 3 && degree($0.toID, graph) <= 3 })
+    }
+    func testBrainMomentsAreOpenTasksDueTodayOrEarlier() {
+        let now = Date(timeIntervalSince1970: 1_763_769_600)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = calendar.startOfDay(for: now)
+        let due = idea("due", title: "לחזור לספק", text: "פסטה", intent: .act, task: "להתקשר", due: today.addingTimeInterval(-3600))
+        let later = idea("later", title: "לחזור אחר כך", text: "מנורה", intent: .act, task: "להשוות", due: calendar.date(byAdding: .day, value: 5, to: today))
+        var done = idea("done", title: "כבר בוצע", text: "שולחן", intent: .act, task: "למדוד", due: today.addingTimeInterval(-3600))
+        done.taskCompletedAt = now
+        let unreviewed = idea("draft", title: "טיוטה", text: "רעיון", intent: .act, task: "לכתוב", due: today, reviewed: nil)
+        let graph = BrainGraph.build(from: [due, later, done, unreviewed], now: now, calendar: calendar)
+        XCTAssertEqual(graph.momentIDs, ["due"])
+        XCTAssertTrue(graph.node("item:due")?.moment == true)
+        XCTAssertTrue(graph.node("item:later")?.moment == false)
+    }
+    func testBrainLayoutStaysInsideTheViewportForHundredsOfItems() {
+        let now = Date(timeIntervalSince1970: 1_763_769_600)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        var captures: [Capture] = []
+        for index in 0..<240 {
+            captures.append(idea("pile-\(index)", title: "פריט \(index)", text: "ייחודי\(index)", collection: "פרויקט", at: now.addingTimeInterval(Double(index))))
+        }
+        for index in 0..<5 {
+            captures.append(idea("hub-\(index)", title: "מילה\(index)", text: "גשר\(index)", collection: "מרכז", at: now))
+            captures.append(idea("leaf-\(index)", title: "מילה\(index) צד", text: "אחר\(index)", collection: "עלה\(index)", at: now))
+        }
+        let graph = BrainGraph.build(from: captures, now: now, calendar: calendar)
+        let root = BrainLayout.scene(graph: graph, focusID: BrainGraph.rootID, viewportWidth: 390)
+        XCTAssertEqual(root.placements.count, 1 + (graph.childIDs[BrainGraph.rootID]?.count ?? 0))
+        XCTAssertLessThan(root.placements.count, captures.count)
+        assertInside(root)
+        let topics = root.placements.filter { graph.node($0.id)?.kind == .topic }
+        XCTAssertGreaterThanOrEqual(topics.count, 2)
+        XCTAssertGreaterThan(topics[0].center.x, topics[1].center.x)
+        XCTAssertEqual(root.hit(topics[0].center), topics[0].id)
+        XCTAssertNil(root.hit(BrainPoint(x: -4, y: -4)))
+
+        let project = try XCTUnwrap(graph.node("topic:space:פרויקט"))
+        let drilled = BrainLayout.scene(graph: graph, focusID: project.id, viewportWidth: 390)
+        XCTAssertEqual(drilled.placements.filter { graph.node($0.id)?.kind == .capture }.count, 240)
+        assertInside(drilled)
+        XCTAssertTrue(graph.links.allSatisfy { degree($0.fromID, graph) <= 3 && degree($0.toID, graph) <= 3 })
+        let unrelated = BrainGraph.build(from: [
+            idea("trip", title: "מזוודה", text: "דרכון", collection: "הטיול", at: now),
+            idea("room", title: "שולחן", text: "כיסא", collection: "הבית", at: now)
+        ], now: now, calendar: calendar)
+        XCTAssertTrue(unrelated.links.isEmpty)
+    }
+    private func degree(_ id: String, _ graph: BrainGraph) -> Int {
+        graph.links.filter { $0.fromID == id || $0.toID == id }.count
+    }
+    private func assertInside(_ scene: BrainScene, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(scene.contentWidth, 390, accuracy: 0.001, file: file, line: line)
+        for placement in scene.placements {
+            XCTAssertGreaterThanOrEqual(placement.center.x - placement.width / 2, -0.001, file: file, line: line)
+            XCTAssertLessThanOrEqual(placement.center.x + placement.width / 2, scene.contentWidth + 0.001, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(placement.center.y - placement.height / 2, -0.001, file: file, line: line)
+            XCTAssertLessThanOrEqual(placement.center.y + placement.height / 2, scene.contentHeight + 0.001, file: file, line: line)
+        }
+    }
+    private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
+        var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
+        capture.collection = collection
+        capture.intent = intent
+        capture.taskTitle = task
+        capture.taskDueAt = due
+        capture.reviewedAt = reviewed
+        return capture
+    }
 }

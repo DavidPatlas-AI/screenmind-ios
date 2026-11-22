@@ -39,15 +39,16 @@ struct NativeReviewView: View {
             } else if let id = session.currentID {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("צילום \(session.resolvedCount + 1) מתוך \(session.ids.count)").font(.subheadline.weight(.semibold))
+                        Text("צילום \(session.resolvedCount + 1) מתוך \(session.ids.count)")
+                            .font(.subheadline.weight(.semibold)).contentTransition(.numericText())
                         Spacer()
                         Text("\(session.approvedIDs.count) אושרו").font(.caption).foregroundStyle(.secondary)
                     }
                     ProgressView(value: Double(session.resolvedCount), total: Double(max(1, session.ids.count)))
                         .tint(NativeTheme.accent)
-                    Text("מה חשוב לזכור? אפשר לתקן ולבחור כוונה לפני שממשיכים.")
+                    Text("מה חשוב לזכור? תקן אם צריך, ובחר למה שמרת את זה לפני שממשיכים.")
                         .font(.caption).foregroundStyle(.secondary)
-                }.padding(18).background(NativeTheme.surface)
+                }.padding(18).background(NativeTheme.surface).animation(.snappy, value: session.resolvedCount)
                 if library.capture(id) != nil {
                     CaptureDetail(id: id,
                         onApproved: { session.finish(id, as: .approved) },

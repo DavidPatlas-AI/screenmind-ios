@@ -18,7 +18,9 @@
     "ScreenMind/LibraryViews.swift",
     "ScreenMind/ReviewFlow.swift",
     "ScreenMind/CaptureDetail.swift",
-    "ScreenMind/CleanupView.swift"
+    "ScreenMind/CleanupView.swift",
+    "ScreenMind/IdeasBrain.swift",
+    "ScreenMind/IdeasBrainView.swift"
   ],
   "shareFiles": [
     "Shared/Capture.swift",

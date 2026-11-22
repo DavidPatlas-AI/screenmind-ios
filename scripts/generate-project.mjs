@@ -12,7 +12,7 @@ if (!/^[A-Za-z0-9.-]+$/.test(bundle) || !/^group\.[A-Za-z0-9.-]+$/.test(group)) 
 const id = label => crypto.createHash("sha256").update("screenmind-ios:"+label).digest("hex").slice(0,24).toUpperCase();
 const objects = {};
 const add = (name, value) => { const key = id(name); objects[key] = value; return key; };
-const appFiles = ["Shared/Capture.swift","Shared/Vault.swift","Shared/BackupArchive.swift","ScreenMind/ScreenMindApp.swift","ScreenMind/NativeLibrary.swift","ScreenMind/PhotoService.swift","ScreenMind/TextRecognition.swift","ScreenMind/NativeHome.swift","ScreenMind/NativeActions.swift","ScreenMind/LibraryViews.swift","ScreenMind/ReviewFlow.swift","ScreenMind/CaptureDetail.swift","ScreenMind/CleanupView.swift"];
+const appFiles = ["Shared/Capture.swift","Shared/Vault.swift","Shared/BackupArchive.swift","ScreenMind/ScreenMindApp.swift","ScreenMind/NativeLibrary.swift","ScreenMind/PhotoService.swift","ScreenMind/TextRecognition.swift","ScreenMind/NativeHome.swift","ScreenMind/NativeActions.swift","ScreenMind/LibraryViews.swift","ScreenMind/ReviewFlow.swift","ScreenMind/CaptureDetail.swift","ScreenMind/CleanupView.swift","ScreenMind/IdeasBrain.swift","ScreenMind/IdeasBrainView.swift"];
 const shareFiles = ["Shared/Capture.swift","Shared/Vault.swift","ShareExtension/ShareViewController.swift"];
 const testFiles = ["ScreenMindTests/ScreenMindTests.swift"];
 for (const file of new Set([...appFiles,...shareFiles,...testFiles])) if(!fs.existsSync(path.join(root,file))) throw Error("Missing source: "+file);
