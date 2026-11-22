@@ -162,7 +162,7 @@ struct ImportReport: Identifiable, Sendable {
                     current.title = result.title
                 }
             }
-            current.textStatus = result.text.isEmpty ? "noText" : "complete"
+            current.textStatus = result.text.isEmpty ? "noText" : (overwrite ? "reread" : "complete")
         }
     }
     func rerecognize(_ id: String) async {

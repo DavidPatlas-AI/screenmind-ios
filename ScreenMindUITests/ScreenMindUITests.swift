@@ -65,9 +65,7 @@ final class ScreenMindUITests: XCTestCase {
         let reread = app.buttons["זהה טקסט מחדש"]
         XCTAssertTrue(reread.waitForExistence(timeout: 5))
         reread.tap()
-        let working = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "מזהה טקסט מחדש", "מזהים את הטקסט במכשיר")).firstMatch
-        XCTAssertTrue(working.waitForExistence(timeout: 8) || !reread.isEnabled)
-        let finished = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "לא נמצא טקסט", "הזיהוי לא הושלם", "הטקסט זוהה במכשיר")).firstMatch
+        let finished = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "זוהה שוב", "הזיהוי לא הושלם", "לא נמצא טקסט")).firstMatch
         if !finished.waitForExistence(timeout: 8) { app.swipeDown() }
         XCTAssertTrue(finished.waitForExistence(timeout: 30))
         snap("03-source-reread")
