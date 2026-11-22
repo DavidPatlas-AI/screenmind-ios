@@ -45,7 +45,7 @@ struct IdeasBrainView: View {
                  : "נושאים לפי המרחב שבחרת, הכוונה, ומילים שחזרו בטקסט. הכול במכשיר.")
                 .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if focusID != BrainGraph.rootID {
-                Button { focus(BrainGraph.rootID) } label: { Label("כל המוח", systemImage: "brain.head.profile") }
+                Button { self.focus(BrainGraph.rootID) } label: { Label("כל המוח", systemImage: "brain.head.profile") }
                     .buttonStyle(.bordered)
             }
         }
