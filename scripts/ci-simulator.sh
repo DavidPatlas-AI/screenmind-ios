@@ -63,9 +63,12 @@ path.write_text(text)
 PY
 
 set +e
+# The same simulator is listed twice (arm64 and x86_64). Tesseract is arm64-only,
+# so the destination and ARCHS stay on arm64.
 xcodebuild -project ScreenMind.xcodeproj -scheme ScreenMind -configuration Debug \
-  -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+  -destination "platform=iOS Simulator,arch=arm64,id=$SIMULATOR_ID" \
   -derivedDataPath build -resultBundlePath ci-results/ScreenMind.xcresult \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   SWIFT_ENABLE_EXPLICIT_MODULES=NO test 2>&1 | tee ci-results/build-and-test.log
 STATUS=${PIPESTATUS[0]}
