@@ -85,13 +85,11 @@ struct NativeCollectionsView: View {
                 NavigationLink {
                     NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
                         .navigationTitle(collection)
+                        .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
                         .toolbar {
                             ToolbarItem(placement: .bottomBar) {
-                                VStack(spacing: 8) {
-                                    ScanProgressBar()
-                                    ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
-                                        Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
-                                    }
+                                ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
+                                    Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
                                 }
                             }
                         }
