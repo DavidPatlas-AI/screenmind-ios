@@ -362,9 +362,8 @@ extension NativeLibrary {
         let chosen = captures.filter { allowed.contains($0.id) && $0.photoDeletedAt == nil && !CleanupPlan.isImportant($0) }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
         let (present, missing) = PhotoService.presentAndMissing(chosen)
-        busy = true
-        progress = "מבקש מאפל להעביר ל״נמחקו לאחרונה״…"
-        defer { busy = false; progress = ""; refresh(); refreshSpaceOffer() }
+        noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
+        defer { clearActivity(); refresh(); refreshSpaceOffer() }
         if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
         let gone = present.map(\.0) + missing
         for id in gone {
@@ -436,7 +435,7 @@ extension NativeLibrary {
             cursor.lastSeenAt = Date()
         }
         SpacePromptStore.save(cursor, vault: vault)
-        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
+        ScanLedgerStore.save(albumLedger, vault: vault)
     }
 
     func deleteSuggested(ids: Set<String>) async throws {
@@ -450,9 +449,8 @@ extension NativeLibrary {
         }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
         let (present, missing) = PhotoService.presentAndMissing(chosen)
-        busy = true
-        progress = "מבקש מאפל להעביר ל״נמחקו לאחרונה״…"
-        defer { busy = false; progress = ""; refresh(); refreshCleanupSummary() }
+        noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
+        defer { clearActivity(); refresh(); refreshCleanupSummary() }
         if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
         for id in present.map(\.0) + missing {
             try vault.update(id) { $0.photoDeletedAt = Date() }
@@ -500,8 +498,7 @@ extension NativeLibrary {
                 do { stored = try await recognize(capture, data: encoded) }
                 catch { stored = (try? vault.update(capture.id) { $0.textStatus = "failed" }) ?? capture }
             }
-            if let index = captures.firstIndex(where: { $0.id == stored.id }) { captures[index] = stored }
-            else { captures.insert(stored, at: 0) }
+            storeCapture(stored)
             albumLedger.processed.insert(identifier)
         } catch {
             albumLedger.failed.insert(identifier)
