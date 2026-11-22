@@ -66,7 +66,7 @@ struct IdeasBrainView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.orange)
-                            .accessibilityLabel("הגיע הרגע, \(capture.taskTitle ?? capture.title)")
+                            .accessibilityLabel(Text(verbatim: "הגיע הרגע, " + (capture.taskTitle ?? capture.title)))
                         }
                     }
                 }.padding(.vertical, 2)

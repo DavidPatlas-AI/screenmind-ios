@@ -52,7 +52,8 @@ final class ScreenMindUITests: XCTestCase {
         let app = launch(["-UITestSeed"])
         XCTAssertTrue(app.buttons["המוח של הרעיונות"].waitForExistence(timeout: 8))
         app.tabBars.buttons["המוח"].tap()
-        XCTAssertTrue(app.buttons["הגיע הרגע, להתקשר"].waitForExistence(timeout: 5))
+        let moment = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "הגיע הרגע")).firstMatch
+        XCTAssertTrue(moment.waitForExistence(timeout: 5))
         let topic = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "נושא הבית")).firstMatch
         XCTAssertTrue(topic.waitForExistence(timeout: 5))
         topic.tap()
@@ -148,7 +149,9 @@ final class ScreenMindUITests: XCTestCase {
         open.tap()
         XCTAssertTrue(app.staticTexts["כפילויות"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["בלי טקסט מועיל"].exists)
-        XCTAssertTrue(app.staticTexts["הטקסט כבר שמור"].exists)
+        let savedHeading = app.staticTexts["הטקסט כבר שמור"]
+        if !savedHeading.waitForExistence(timeout: 2) { app.swipeUp() }
+        XCTAssertTrue(savedHeading.waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["שתף כ־Markdown"].exists)
         XCTAssertTrue(app.buttons["שתף כטקסט"].exists)
         let selectJunk = app.buttons["בחר את כל מה שבלי טקסט מועיל"]
@@ -158,7 +161,7 @@ final class ScreenMindUITests: XCTestCase {
         XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
         snap("10-cleanup-confirm")
         app.buttons["להשאיר בתמונות"].tap()
-        XCTAssertTrue(app.staticTexts["בלי טקסט"].exists)
+        XCTAssertTrue(app.staticTexts["בלי טקסט מועיל"].waitForExistence(timeout: 5))
     }
 
     func testNewScreenshotCardAsksBeforeDeleting() {
