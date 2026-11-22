@@ -361,16 +361,22 @@ extension NativeLibrary {
         let allowed = Set(offer.captureIDs)
         let chosen = captures.filter { allowed.contains($0.id) && $0.photoDeletedAt == nil && !CleanupPlan.isImportant($0) }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        let (present, missing) = PhotoService.presentAndMissing(chosen)
+        _ = await PhotoService.permission()
+        let plan = PhotoService.deletionPlan(chosen)
+        guard !plan.present.isEmpty || !plan.alreadyGone.isEmpty else {
+            throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
+        }
         noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
         defer { clearActivity(); refresh(); refreshSpaceOffer() }
-        if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
-        let gone = present.map(\.0) + missing
+        if !plan.present.isEmpty { try await PhotoService.requestDeletion(plan.present.map(\.1)) }
+        let gone = plan.present.map(\.0) + plan.alreadyGone
         for id in gone {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
         SpacePromptStore.remove(Set(gone), vault: vault)
-        spaceOffer = nil
+        if !plan.unresolved.isEmpty {
+            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
+        }
     }
 
     func catchNewScreenshots() async {
@@ -429,10 +435,8 @@ extension NativeLibrary {
         }
         guard advanceCursor else { return }
         var cursor = SpacePromptStore.load(vault)
-        if stamps.count >= 20, let last = stamps.last?.created {
-            cursor.lastSeenAt = last
-        } else {
-            cursor.lastSeenAt = Date()
+        if let next = NewShotPlan.nextSeen(newestIndexed: stamps.map(\.created).max(), previous: cursor.lastSeenAt) {
+            cursor.lastSeenAt = next
         }
         SpacePromptStore.save(cursor, vault: vault)
         ScanLedgerStore.save(albumLedger, vault: vault)
@@ -448,12 +452,19 @@ extension NativeLibrary {
             ids.contains(capture.id) && allowed.contains(capture.id) && !CleanupPlan.isImportant(capture)
         }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        let (present, missing) = PhotoService.presentAndMissing(chosen)
+        _ = await PhotoService.permission()
+        let plan = PhotoService.deletionPlan(chosen)
+        guard !plan.present.isEmpty || !plan.alreadyGone.isEmpty else {
+            throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
+        }
         noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
         defer { clearActivity(); refresh(); refreshCleanupSummary() }
-        if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
-        for id in present.map(\.0) + missing {
+        if !plan.present.isEmpty { try await PhotoService.requestDeletion(plan.present.map(\.1)) }
+        for id in plan.present.map(\.0) + plan.alreadyGone {
             try vault.update(id) { $0.photoDeletedAt = Date() }
+        }
+        if !plan.unresolved.isEmpty {
+            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
         }
     }
 
@@ -491,6 +502,13 @@ extension NativeLibrary {
                 return ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
             }
             guard let encoded else { throw NativeError.message("לא הצלחתי להקטין את הצילום.") }
+            if let claimed = claimUnidentifiedShare(matching: fingerprint, vault: vault) {
+                let stored = try vault.update(claimed.id) { $0.photoIdentifier = identifier }
+                if let fingerprint { albumLedger.fingerprints[stored.id] = fingerprint }
+                storeCapture(stored)
+                albumLedger.processed.insert(identifier)
+                return
+            }
             let capture = try vault.save(data: encoded, name: "screenshot.jpg", photoIdentifier: identifier, source: "album")
             if let fingerprint { albumLedger.fingerprints[capture.id] = fingerprint }
             var stored = capture
@@ -504,5 +522,22 @@ extension NativeLibrary {
             albumLedger.failed.insert(identifier)
             albumLedger.processed.insert(identifier)
         }
+    }
+
+    /// A share save keeps the original bytes and may have no Photos identifier.
+    /// The later album copy is a smaller JPEG, so match the picture instead of the file hash.
+    private func claimUnidentifiedShare(matching fingerprint: UInt64?, vault: Vault) -> Capture? {
+        guard let fingerprint else { return nil }
+        for capture in captures where capture.source == "share"
+            && (capture.photoIdentifier ?? "").isEmpty
+            && capture.photoDeletedAt == nil
+            && !capture.isArchived {
+            guard let data = try? vault.original(capture),
+                  let image = UIImage(data: data),
+                  let pixels = ScreenshotPixels.grayscale(image),
+                  let hash = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8) else { continue }
+            if ImageFingerprint.hamming(hash, fingerprint) <= ImageFingerprint.nearDistance { return capture }
+        }
+        return nil
     }
 }

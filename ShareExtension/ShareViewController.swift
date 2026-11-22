@@ -59,7 +59,7 @@ final class ShareViewController: UIViewController {
             batch.count += 1
             batch.bytes += bytes.count
             batch.captureIDs.append(capture.id)
-            if let identifier { batch.photoIDs.append(identifier) }
+            if let identifier { batch.links.append(SharePhotoLink(captureID: capture.id, photoID: identifier)) }
         }
         return batch
     }
@@ -80,10 +80,10 @@ final class ShareViewController: UIViewController {
     }
 
     private func deletePhotos(_ batch: ShareBatch) async -> Bool {
-        guard !batch.photoIDs.isEmpty else { return false }
+        guard !batch.links.isEmpty else { return false }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return false }
-        let fetched = PHAsset.fetchAssets(withLocalIdentifiers: batch.photoIDs, options: nil)
+        let fetched = PHAsset.fetchAssets(withLocalIdentifiers: batch.links.map(\.photoID), options: nil)
         var assets: [PHAsset] = []
         fetched.enumerateObjects { asset, _, _ in assets.append(asset) }
         guard !assets.isEmpty else { return false }
@@ -92,13 +92,15 @@ final class ShareViewController: UIViewController {
                 PHAssetChangeRequest.deleteAssets(assets as NSArray)
             }
         } catch { return false }
+        let removedIDs = Set(assets.map(\.localIdentifier))
+        let removedCaptures = batch.links.filter { removedIDs.contains($0.photoID) }.map(\.captureID)
         if let vault = try? Vault() {
-            for id in batch.captureIDs {
+            for id in removedCaptures {
                 try? vault.update(id) { $0.photoDeletedAt = Date() }
             }
-            SpacePromptStore.remove(Set(batch.captureIDs), vault: vault)
+            SpacePromptStore.remove(Set(removedCaptures), vault: vault)
         }
-        return true
+        return removedCaptures.count == batch.captureIDs.count
     }
 
     private func keep(_ batch: ShareBatch) {
@@ -107,10 +109,15 @@ final class ShareViewController: UIViewController {
     }
 }
 
+struct SharePhotoLink: Equatable {
+    var captureID: String
+    var photoID: String
+}
+
 struct ShareBatch: Equatable {
     var count = 0
     var bytes = 0
-    var photoIDs: [String] = []
+    var links: [SharePhotoLink] = []
     var captureIDs: [String] = []
 }
 

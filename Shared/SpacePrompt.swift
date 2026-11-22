@@ -90,4 +90,11 @@ enum NewShotPlan {
             return identifier
         }
     }
+
+    /// Keep the cursor on the newest shot Photos has already listed. Moving it to "now"
+    /// hides a screenshot that was taken but not indexed yet.
+    static func nextSeen(newestIndexed: Date?, previous: Date?) -> Date? {
+        guard let newestIndexed else { return previous }
+        return newestIndexed.addingTimeInterval(-1)
+    }
 }
