@@ -99,7 +99,7 @@ struct NativeHome: View {
         ToolbarItem(placement: .topBarTrailing) {
             PhotosPicker(selection: $picker, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
                 Label("שמור צילומים", systemImage: "plus").labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-            }.disabled(library.busy)
+            }.disabled(library.busy || library.albumScan.status == .running)
         }
         ToolbarItem(placement: .topBarLeading) {
             Button { settings = true } label: {

@@ -1,5 +1,6 @@
 import Foundation
 import Photos
+import UIKit
 
 // The full Screenshots pass. It remembers localIdentifiers, keeps a small batch in flight,
 // and never deletes a photo. Cleanup suggestions are a separate, confirmed step.
@@ -256,6 +257,7 @@ extension NativeLibrary {
             self.error = error.localizedDescription
             return
         }
+        if let vault { fingerprintStoredCaptures(vault: vault) }
         let known = Set(captures.compactMap(\.photoIdentifier))
         albumLedger.processed.formUnion(known)
         albumLedger.total = identifiers.count
@@ -369,6 +371,19 @@ extension NativeLibrary {
             snapshot.eta = ""
         }
         albumScan = snapshot
+    }
+
+    private func fingerprintStoredCaptures(vault: Vault) {
+        for capture in captures where albumLedger.fingerprints[capture.id] == nil
+            && capture.photoDeletedAt == nil && !capture.isArchived
+            && !(capture.photoIdentifier ?? "").isEmpty && capture.source != "picker" {
+            autoreleasepool {
+                guard let data = try? vault.original(capture),
+                      let image = UIImage(data: data),
+                      let pixels = ScreenshotPixels.grayscale(image) else { return }
+                albumLedger.fingerprints[capture.id] = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
+            }
+        }
     }
 
     private func ingest(_ identifier: String, vault: Vault) async {
