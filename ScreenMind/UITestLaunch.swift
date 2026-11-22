@@ -85,7 +85,9 @@ enum UITestLaunch {
                 capture.taskDueAt = sample.due
                 capture.reviewedAt = sample.reviewed ? Date(timeIntervalSince1970: 1_700_000_000) : nil
                 capture.textStatus = "complete"
-                capture.createdAt = Date(timeIntervalSince1970: 1_700_000_000 + Double(index))
+                capture.createdAt = sample.title == "שולחן אלון"
+                    ? Date(timeIntervalSince1970: 1_900_000_000)
+                    : Date(timeIntervalSince1970: 1_700_000_000 + Double(index))
             }
         }
     }
