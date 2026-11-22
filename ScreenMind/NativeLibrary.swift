@@ -81,6 +81,9 @@ struct ImportReport: Identifiable, Sendable {
         if let index = captures.firstIndex(where: { $0.id == stored.id }) { captures[index] = stored }
         else { captures.insert(stored, at: 0) }
     }
+    func forgetCapture(_ id: String) {
+        captures.removeAll { $0.id == id }
+    }
     @discardableResult func update(_ id: String, change: (inout Capture) -> Void) -> Bool {
         guard let vault else { return false }
         do { try vault.update(id, change: change); refresh(); return true }

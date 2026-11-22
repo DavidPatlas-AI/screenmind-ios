@@ -584,7 +584,7 @@ extension NativeLibrary {
             albumLedger.fingerprints.removeValue(forKey: auto.id)
             try? vault.delete(id: auto.id)
             SpacePromptStore.remove([auto.id], vault: vault)
-            captures.removeAll { $0.id == auto.id }
+            forgetCapture(auto.id)
         }
     }
 
