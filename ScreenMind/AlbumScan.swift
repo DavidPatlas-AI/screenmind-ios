@@ -334,12 +334,19 @@ extension NativeLibrary {
             ids.contains(capture.id) && allowed.contains(capture.id) && !CleanupPlan.isImportant(capture)
         }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        let (present, missing) = PhotoService.presentAndMissing(chosen)
+        _ = await PhotoService.permission()
+        let deletion = PhotoService.deletionPlan(chosen)
+        guard !deletion.present.isEmpty || !deletion.alreadyGone.isEmpty else {
+            throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
+        }
         noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
         defer { clearActivity(); refresh(); refreshCleanupSummary() }
-        if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
-        for id in present.map(\.0) + missing {
+        if !deletion.present.isEmpty { try await PhotoService.requestDeletion(deletion.present.map(\.1)) }
+        for id in deletion.present.map(\.0) + deletion.alreadyGone {
             try vault.update(id) { $0.photoDeletedAt = Date() }
+        }
+        if !deletion.unresolved.isEmpty {
+            error = "חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל."
         }
     }
 

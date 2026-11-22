@@ -71,17 +71,26 @@ enum PhotoService {
             }
         }
     }
-    static func presentAndMissing(_ captures: [Capture]) -> (present: [(String, PHAsset)], missing: [String]) {
+    struct DeletionPlan {
         var present: [(String, PHAsset)] = []
-        var missing: [String] = []
+        /// The library is fully authorized and the identifier no longer resolves.
+        var alreadyGone: [String] = []
+        /// No identifier, or the library is limited, so the photo may still be in Photos.
+        var unresolved: [String] = []
+    }
+    static func deletionPlan(_ captures: [Capture]) -> DeletionPlan {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        var plan = DeletionPlan()
         for capture in captures {
             if let identifier = capture.photoIdentifier, let asset = asset(id: identifier) {
-                present.append((capture.id, asset))
+                plan.present.append((capture.id, asset))
+            } else if capture.photoIdentifier != nil, status == .authorized {
+                plan.alreadyGone.append(capture.id)
             } else {
-                missing.append(capture.id)
+                plan.unresolved.append(capture.id)
             }
         }
-        return (present, missing)
+        return plan
     }
     static func asset(id: String) -> PHAsset? {
         guard hasAccess else { return nil }

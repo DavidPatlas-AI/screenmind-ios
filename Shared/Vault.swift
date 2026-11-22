@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 final class Vault: @unchecked Sendable {
     static let groupID = "group.app.screenmind.next"
+    static var runsInsideAppExtension: Bool { Bundle.main.bundleURL.pathExtension == "appex" }
     let root: URL
     private let records: URL
     private let originals: URL
@@ -15,9 +16,15 @@ final class Vault: @unchecked Sendable {
             container = rootURL
         } else if let shared = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.groupID) {
             container = shared
+        } else if Self.runsInsideAppExtension {
+            throw NativeError.message("לא ניתן לפתוח את הארכיון המשותף. יש להגדיר App Group בשני היעדים ב־Xcode.")
         } else {
-            // Unsigned simulator builds have no App Group container. Keep the archive in the app.
+            #if DEBUG || SCREENMIND_PERSONAL
+            // The unsigned simulator has no App Group. A release build, and the share extension, still require it.
             container = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            #else
+            throw NativeError.message("לא ניתן לפתוח את הארכיון המשותף. יש להגדיר App Group בשני היעדים ב־Xcode.")
+            #endif
         }
         root = container.appendingPathComponent("ScreenMindVault", isDirectory: true)
         records = root.appendingPathComponent("Records", isDirectory: true)
