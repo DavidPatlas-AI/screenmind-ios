@@ -354,7 +354,8 @@ extension NativeLibrary {
         await scanAllScreenshots()
     }
 
-    func deleteSuggested(ids: Set<String>) async throws {
+    @discardableResult
+    func deleteSuggested(ids: Set<String>) async throws -> Bool {
         guard !busy, !scanLoopActive, let vault, !ids.isEmpty else {
             throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")
         }
@@ -378,9 +379,7 @@ extension NativeLibrary {
         if !deletion.unresolved.isEmpty {
             throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
         }
-        if deletion.present.isEmpty {
-            throw NativeError.message("הצילומים האלה כבר לא בתמונות. ההערות נשארות ב־ScreenMind.")
-        }
+        return !deletion.present.isEmpty
     }
 
     func refreshCleanupSummary() {
