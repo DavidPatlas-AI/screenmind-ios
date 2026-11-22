@@ -29,6 +29,12 @@ struct ImportReport: Identifiable, Sendable {
     @Published var report: ImportReport?
     @Published private(set) var backupReceipt: BackupReceipt?
     @Published private(set) var hebrewRecognitionSupported: Bool?
+    @Published var albumScan = AlbumScanSnapshot()
+    @Published var cleanupSummary = CleanupSummary()
+    var albumLedger = ScanLedger()
+    let scanGate = ScanGate()
+    var scanLoopActive = false
+    var startGate = false
     private(set) var vault: Vault?
     private let thumbnails = NSCache<NSString, UIImage>()
     var active: [Capture] { captures.filter { !$0.isArchived } }
@@ -42,7 +48,15 @@ struct ImportReport: Identifiable, Sendable {
             let opened = try Vault()
             vault = opened
             try UITestLaunch.prepare(opened)
+            albumLedger = ScanLedgerStore.load(opened)
+            if albumLedger.status == .running {
+                albumLedger.status = .interrupted
+                ScanLedgerStore.save(albumLedger, vault: opened)
+            }
             refresh()
+            let storedDone = albumLedger.total > 0 ? min(albumLedger.processed.count, albumLedger.total) : 0
+            publishAlbumScan(done: storedDone)
+            refreshCleanupSummary()
         } catch { self.error = error.localizedDescription }
         hebrewRecognitionSupported = TextRecognition.hebrewDataAvailable
     }
@@ -50,6 +64,18 @@ struct ImportReport: Identifiable, Sendable {
         guard let vault else { return }
         do { captures = try vault.all() }
         catch { self.error = error.localizedDescription }
+    }
+    func noteActivity(_ message: String) {
+        busy = true
+        progress = message
+    }
+    func clearActivity() {
+        busy = false
+        progress = ""
+    }
+    func storeCapture(_ stored: Capture) {
+        if let index = captures.firstIndex(where: { $0.id == stored.id }) { captures[index] = stored }
+        else { captures.insert(stored, at: 0) }
     }
     @discardableResult func update(_ id: String, change: (inout Capture) -> Void) -> Bool {
         guard let vault else { return false }
@@ -75,24 +101,46 @@ struct ImportReport: Identifiable, Sendable {
         return result
     }
     func start() async {
-        refresh()
-        guard !busy, let vault else { return }
-        let items = captures.filter { $0.textStatus == "pending" }.prefix(20)
-        guard !items.isEmpty else { return }
-        busy = true
-        progress = "מזהה טקסט במכשיר…"
-        defer { busy = false; progress = ""; refresh() }
-        for (index, capture) in items.enumerated() {
-            progress = "מזהה טקסט במכשיר · \(index + 1) מתוך \(items.count)"
-            do { try await recognize(capture, data: vault.original(capture)) }
-            catch { try? vault.update(capture.id) { $0.textStatus = "failed" } }
+        if startGate { return }
+        startGate = true
+        defer { startGate = false }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-UITestAlbumRunning") {
+            if albumScan.status == .paused || albumScan.status == .cancelled { return }
+            albumLedger.status = .running
+            albumLedger.total = 2500
+            albumScan.status = .running
+            albumScan.done = 400
+            albumScan.total = 2500
+            albumScan.eta = AlbumPlan.etaLabel(20 * 60)
+            return
         }
-    }
-    private func recognize(_ capture: Capture, data: Data, overwrite: Bool = false) async throws {
+        #endif
+        refresh()
         guard let vault else { return }
+        if !busy && albumScan.status != .running {
+            let items = captures.filter { $0.textStatus == "pending" }.prefix(20)
+            if !items.isEmpty {
+                busy = true
+                progress = "מזהה טקסט במכשיר…"
+                for (index, capture) in items.enumerated() {
+                    progress = "מזהה טקסט במכשיר · \(index + 1) מתוך \(items.count)"
+                    do { try await recognize(capture, data: vault.original(capture)) }
+                    catch { try? vault.update(capture.id) { $0.textStatus = "failed" } }
+                }
+                busy = false
+                progress = ""
+                refresh()
+            }
+        }
+        guard AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy else { return }
+        await scanAllScreenshots()
+    }
+    @discardableResult func recognize(_ capture: Capture, data: Data, overwrite: Bool = false) async throws -> Capture {
+        guard let vault else { throw NativeError.message("הארכיון אינו זמין.") }
         let result = try await TextRecognition.recognize(data)
         hebrewRecognitionSupported = result.hebrewSupported
-        try vault.update(capture.id) { current in
+        return try vault.update(capture.id) { current in
             let fill = overwrite || (current.reviewedAt == nil && current.text.isEmpty)
             if fill {
                 current.text = result.text
@@ -105,9 +153,12 @@ struct ImportReport: Identifiable, Sendable {
         }
     }
     func rerecognize(_ id: String) async {
-        guard !busy, let vault, let capture = captures.first(where: { $0.id == id }) else { return }
+        guard !busy, !scanLoopActive, let vault, let capture = captures.first(where: { $0.id == id }) else { return }
         busy = true
         progress = "מזהה טקסט מחדש במכשיר…"
+        if let index = captures.firstIndex(where: { $0.id == id }) {
+            captures[index].textStatus = "pending"
+        }
         defer { busy = false; progress = ""; refresh() }
         do { try await recognize(capture, data: vault.original(capture), overwrite: true) }
         catch {
@@ -116,6 +167,10 @@ struct ImportReport: Identifiable, Sendable {
         }
     }
     func importPicker(_ items: [PhotosPickerItem]) async {
+        guard albumScan.status != .running else {
+            error = "הסריקה של האלבום עדיין רצה. אפשר להשהות אותה ולהמשיך אחר כך."
+            return
+        }
         guard !busy, let vault, !items.isEmpty else { return }
         busy = true
         progress = "שומר את הצילומים שנבחרו…"
@@ -148,6 +203,10 @@ struct ImportReport: Identifiable, Sendable {
         }
     }
     func scanScreenshots() async {
+        guard albumScan.status != .running else {
+            error = "הסריקה של האלבום עדיין רצה. אפשר להשהות אותה ולהמשיך אחר כך."
+            return
+        }
         guard !busy, let vault else { return }
         busy = true
         progress = "מבקש גישה לצילומי מסך…"
@@ -182,7 +241,7 @@ struct ImportReport: Identifiable, Sendable {
         } catch { self.error = error.localizedDescription }
     }
     func prepareBackup(ids: Set<String>) async throws -> PreparedBackup {
-        guard !busy, let vault else { throw NativeError.message("המתן לסיום הפעולה הנוכחית.") }
+        guard !busy, !scanLoopActive, let vault else { throw NativeError.message("המתן לסיום הפעולה הנוכחית.") }
         let selected = captures.filter { ids.contains($0.id) }
         guard !selected.isEmpty, selected.count <= 20 else { throw NativeError.message("בחר בין מקור אחד ל־20 מקורות.") }
         busy = true; progress = "מכין את המקורות לייצוא…"
@@ -230,6 +289,7 @@ struct ImportReport: Identifiable, Sendable {
         return nil
     }
     func deleteFromPhotos(ids: Set<String>) async throws {
+        guard albumScan.status != .running else { throw NativeError.message("הסריקה של האלבום עדיין רצה. אפשר להשהות אותה קודם.") }
         guard !busy, let vault, !ids.isEmpty, ids.count <= 20 else { throw NativeError.message("בחר עד 20 צילומים והמתן לסיום הפעולה הנוכחית.") }
         busy = true; progress = "בודק את העותקים והמקורות לפני בקשת המחיקה…"
         defer { busy = false; progress = ""; refresh() }

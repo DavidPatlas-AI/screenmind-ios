@@ -217,6 +217,124 @@ import UIKit
         ], now: now, calendar: calendar)
         XCTAssertTrue(unrelated.links.isEmpty)
     }
+
+    func testTwentyFiveHundredScreenshotsStayBatchedAndCluster() {
+        let identifiers = (0..<2500).map { String(format: "asset-%04d", $0) }
+        var done = Set(identifiers.prefix(800))
+        var steps = 0
+        let started = Date()
+        while true {
+            let batch = AlbumPlan.nextBatch(all: identifiers, done: done)
+            if batch.isEmpty { break }
+            XCTAssertLessThanOrEqual(batch.count, AlbumPlan.batchSize)
+            XCTAssertTrue(batch.allSatisfy { !done.contains($0) })
+            done.formUnion(batch)
+            steps += 1
+            if steps > 3000 { XCTFail("the batch plan did not finish"); return }
+        }
+        XCTAssertEqual(done.count, 2500)
+        XCTAssertEqual(steps, 425)
+        let moment = Date(timeIntervalSince1970: 1_700_000_000)
+        var captures: [Capture] = []
+        var fingerprints: [String: UInt64] = [:]
+        captures.reserveCapacity(2500)
+        for index in 0..<2500 {
+            let text = index % 17 == 0 ? "" : "טקסט שמור \(index) מילה"
+            var capture = idea("cap-\(index)", title: "צילום \(index)", text: text, at: moment.addingTimeInterval(Double(index)))
+            capture.photoIdentifier = identifiers[index]
+            capture.textStatus = text.isEmpty ? "noText" : "complete"
+            captures.append(capture)
+            var hash = UInt64(index &+ 1)
+            let mixed = (UInt64(0x9E37_79B9) << 32) | UInt64(0x7F4A_7C15)
+            hash = hash &* mixed
+            hash ^= hash >> 30
+            fingerprints[capture.id] = index == 1 ? fingerprints["cap-0"] ?? 0 : hash
+        }
+        let plan = CleanupPlan.build(captures: captures, fingerprints: fingerprints)
+        let covered = plan.duplicates + plan.junk + plan.textSaved
+        XCTAssertEqual(Set(covered).count, covered.count)
+        XCTAssertEqual(Set(covered).count, 2500)
+        XCTAssertTrue(plan.duplicates.contains("cap-0"))
+        XCTAssertTrue(NotesExport.markdown(captures).contains("טקסט שמור 1 מילה"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    }
+
+    func testCleanupKeepsFavoritesAndSplitsDuplicatesFromJunk() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var favorite = idea("fav", title: "חשוב", text: "טקסט חשוב לשמור בבית", at: now)
+        favorite.isFavorite = true
+        favorite.photoIdentifier = "fav-photo"
+        favorite.textStatus = "complete"
+        var copy = idea("copy", title: "עותק", text: "טקסט חשוב לשמור בבית", at: now.addingTimeInterval(10))
+        copy.photoIdentifier = "copy-photo"
+        copy.textStatus = "complete"
+        var junk = idea("junk", title: "רעש", text: "", at: now.addingTimeInterval(20))
+        junk.photoIdentifier = "junk-photo"
+        junk.textStatus = "noText"
+        var saved = idea("saved", title: "פתק ארוך", text: "רשימת קניות לשבת בבוקר", at: now.addingTimeInterval(30))
+        saved.photoIdentifier = "saved-photo"
+        saved.textStatus = "complete"
+        var task = idea("task", title: "שיחה", text: "להתקשר לספק מחר בבוקר", intent: .act, task: "להתקשר", at: now)
+        task.photoIdentifier = "task-photo"
+        task.textStatus = "complete"
+        let plan = CleanupPlan.build(
+            captures: [favorite, copy, junk, saved, task],
+            fingerprints: [
+                favorite.id: 0,
+                copy.id: 0,
+                junk.id: UInt64(0xFFFF_FFFF) << 32,
+                saved.id: UInt64(0xFFFF_FFFF),
+                task.id: (UInt64(0xFFFF) << 48) | (UInt64(0xFFFF) << 16)
+            ]
+        )
+        XCTAssertEqual(plan.duplicates, ["copy"])
+        XCTAssertEqual(plan.junk, ["junk"])
+        XCTAssertEqual(plan.textSaved, ["saved"])
+        XCTAssertFalse(plan.duplicates.contains("fav"))
+        XCTAssertFalse(plan.textSaved.contains("task"))
+        XCTAssertFalse(plan.junk.contains("task"))
+        var failed = idea("failed", title: "נכשל", text: "", at: now.addingTimeInterval(40))
+        failed.photoIdentifier = "failed-photo"
+        failed.textStatus = "failed"
+        let held = CleanupPlan.build(captures: [failed], fingerprints: [failed.id: 1])
+        XCTAssertTrue(held.junk.isEmpty)
+        XCTAssertTrue(held.duplicates.isEmpty)
+        XCTAssertTrue(held.textSaved.isEmpty)
+    }
+
+    func testNearDuplicateHashIgnoresATinyPixelChange() {
+        var similar = [UInt8](repeating: 0, count: 9 * 8)
+        for index in similar.indices { similar[index] = UInt8((index * 3) % 250) }
+        var noisy = similar
+        noisy[0] = noisy[0] &+ 2
+        var other = [UInt8](repeating: 0, count: 9 * 8)
+        for index in other.indices { other[index] = UInt8(255 - (index % 40)) }
+        let close = ImageFingerprint.dHash(pixels: similar, width: 9, height: 8)
+        let shifted = ImageFingerprint.dHash(pixels: noisy, width: 9, height: 8)
+        let far = ImageFingerprint.dHash(pixels: other, width: 9, height: 8)
+        XCTAssertLessThanOrEqual(ImageFingerprint.hamming(close, shifted), ImageFingerprint.nearDistance)
+        XCTAssertGreaterThan(ImageFingerprint.hamming(close, far), ImageFingerprint.nearDistance)
+    }
+
+    func testAlbumResumeEtaAndReducedPixels() {
+        XCTAssertTrue(AlbumPlan.shouldResume(.interrupted))
+        for status in [AlbumScanStatus.paused, .cancelled, .finished, .running, .idle] {
+            XCTAssertFalse(AlbumPlan.shouldResume(status))
+        }
+        XCTAssertEqual(AlbumPlan.etaLabel(30), "עוד פחות מדקה")
+        XCTAssertEqual(AlbumPlan.etaLabel(120), "עוד כ־2 דקות")
+        XCTAssertEqual(AlbumPlan.etaLabel(3600), "עוד כשעה")
+        XCTAssertEqual(AlbumPlan.etaLabel(7200), "עוד כ־2 שעות")
+        let shrunk = AlbumPlan.pixelSize(width: 1170, height: 2532)
+        XCTAssertEqual(shrunk.1, 1280)
+        XCTAssertLessThan(shrunk.0, 1170)
+        XCTAssertEqual(AlbumPlan.pixelSize(width: 80, height: 40).0, 80)
+        let note = idea("note", title: "שלום", text: "עולם שמור כאן", at: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertTrue(NotesExport.markdown([note]).contains("עולם שמור כאן"))
+        XCTAssertTrue(NotesExport.plain([note]).contains("שלום"))
+        XCTAssertFalse(NotesExport.markdown([note]).contains("API_KEY"))
+    }
+
     private func degree(_ id: String, _ graph: BrainGraph) -> Int {
         graph.links.filter { $0.fromID == id || $0.toID == id }.count
     }

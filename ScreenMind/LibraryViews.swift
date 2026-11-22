@@ -4,6 +4,7 @@ struct NativeLibraryView: View {
     let open: (Capture) -> Void
     let cleanup: (Set<String>) -> Void
     var onScan: (() -> Void)? = nil
+    var onScanAll: (() -> Void)? = nil
     var collection: String? = nil
     @State private var query = ""
     @State private var filter = "all"
@@ -30,10 +31,18 @@ struct NativeLibraryView: View {
                 if visible.isEmpty {
                     ContentUnavailableView(query.isEmpty ? "יש מקום למשהו טוב." : "נסה מילה אחרת.", systemImage: "square.stack",
                                            description: Text(query.isEmpty ? "בחר צילומים בכפתור + או סרוק צילומי מסך. אחר כך אפשר לראות איך הם מתחברים בלשונית המוח." : "החיפוש לפי הטקסט המזוהה, הכותרת ושם המרחב. אפשר לתקן טקסט מתוך המקור."))
-                    if query.isEmpty && collection == nil && filter == "all", let onScan {
-                        Button(action: onScan) {
-                            Label("סרוק צילומי מסך", systemImage: "photo.badge.magnifyingglass")
-                        }.buttonStyle(.bordered).disabled(library.busy)
+                    if query.isEmpty && collection == nil && filter == "all" {
+                        if let onScanAll {
+                            Button(action: onScanAll) {
+                                Label("סרוק את כל צילומי המסך", systemImage: "photo.stack")
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }.buttonStyle(.borderedProminent).disabled(library.busy)
+                        }
+                        if let onScan {
+                            Button(action: onScan) {
+                                Label("סרוק צילומי מסך", systemImage: "photo.badge.magnifyingglass")
+                            }.buttonStyle(.bordered).disabled(library.busy)
+                        }
                     }
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 14)], spacing: 16) {

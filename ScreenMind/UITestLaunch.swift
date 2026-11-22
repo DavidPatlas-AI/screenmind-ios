@@ -42,6 +42,7 @@ enum UITestLaunch {
             guard let urls = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { continue }
             for url in urls { try? manager.removeItem(at: url) }
         }
+        try? manager.removeItem(at: vault.root.appendingPathComponent("scan-ledger.json"))
     }
 
     private struct Sample {
@@ -74,6 +75,7 @@ enum UITestLaunch {
         for name in ["חשבונית", "דרכון", "מצפן", "מזוודה", "פתק"] {
             samples.append(Sample(title: name, text: name))
         }
+        samples.append(Sample(title: "בלי טקסט", text: ""))
         for (index, sample) in samples.enumerated() {
             let saved = try vault.save(data: png(index: index), name: "seed-\(index).png", photoIdentifier: nil, source: "uitest")
             try vault.update(saved.id) { capture in
@@ -84,12 +86,25 @@ enum UITestLaunch {
                 capture.taskTitle = sample.task
                 capture.taskDueAt = sample.due
                 capture.reviewedAt = sample.reviewed ? Date(timeIntervalSince1970: 1_700_000_000) : nil
-                capture.textStatus = "complete"
+                capture.textStatus = sample.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "noText" : "complete"
+                capture.photoIdentifier = "uitest-\(index)"
                 capture.createdAt = sample.title == "שולחן אלון"
                     ? Date(timeIntervalSince1970: 1_900_000_000)
                     : Date(timeIntervalSince1970: 1_700_000_000 + Double(index))
             }
         }
+        let saved = try vault.all()
+        var fingerprints: [String: UInt64] = [:]
+        let shared: UInt64 = 0x1111_1111_1111_1111
+        for capture in saved where capture.title == "מנורה" || capture.title == "כורסה" {
+            fingerprints[capture.id] = shared
+        }
+        var ledger = ScanLedger()
+        ledger.status = .finished
+        ledger.total = saved.count
+        ledger.processed = Set(saved.compactMap(\.photoIdentifier))
+        ledger.fingerprints = fingerprints
+        ScanLedgerStore.save(ledger, vault: vault)
     }
 
     private static func png(index: Int) -> Data {

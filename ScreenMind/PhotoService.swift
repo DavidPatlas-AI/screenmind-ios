@@ -1,5 +1,6 @@
 import Foundation
 import Photos
+import UIKit
 
 enum PhotoService {
     static func permission() async -> PHAuthorizationStatus {
@@ -18,6 +19,78 @@ enum PhotoService {
         var assets: [PHAsset] = []
         PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in assets.append(asset) }
         return assets
+    }
+    static func screenshotIdentifiers() throws -> [String] {
+        guard hasAccess else { throw NativeError.message("אפשר לבחור תמונות בלי הרשאה מלאה, או לאפשר גישה לתמונות בהגדרות.") }
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "(mediaSubtype & %d) != 0", Int(PHAssetMediaSubtype.photoScreenshot.rawValue))
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        var identifiers: [String] = []
+        PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
+            identifiers.append(asset.localIdentifier)
+        }
+        return identifiers
+    }
+    /// An `.exact` request is sized in pixels. Dividing by the screen scale would ask for about a third of `maxPixel` on a 3x phone.
+    static func downscaled(_ asset: PHAsset, maxPixel: Int) async throws -> UIImage {
+        let longest = max(asset.pixelWidth, asset.pixelHeight)
+        let pixels = longest > 0 ? min(maxPixel, longest) : maxPixel
+        let edge = CGFloat(pixels)
+        let aspect = longest > 0 ? CGFloat(max(asset.pixelWidth, 1)) / CGFloat(max(asset.pixelHeight, 1)) : 1
+        let target = asset.pixelWidth >= asset.pixelHeight
+            ? CGSize(width: edge, height: max(edge / max(aspect, 0.01), 1))
+            : CGSize(width: max(edge * aspect, 1), height: edge)
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        options.version = .current
+        return try await withCheckedThrowingContinuation { continuation in
+            let gate = NSLock()
+            var resumed = false
+            PHImageManager.default().requestImage(for: asset, targetSize: target, contentMode: .aspectFit, options: options) { image, info in
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                gate.lock()
+                let first = !resumed
+                resumed = true
+                gate.unlock()
+                guard first else { return }
+                if (info?[PHImageCancelledKey] as? Bool) == true {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let image else {
+                    continuation.resume(throwing: NativeError.message("לא הצלחתי לקרוא צילום מסך."))
+                    return
+                }
+                continuation.resume(returning: image)
+            }
+        }
+    }
+    struct DeletionPlan {
+        var present: [(String, PHAsset)] = []
+        /// The library is fully authorized and the identifier no longer resolves.
+        var alreadyGone: [String] = []
+        /// No identifier, or the library is limited, so the photo may still be in Photos.
+        var unresolved: [String] = []
+    }
+    static func deletionPlan(_ captures: [Capture]) -> DeletionPlan {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        var plan = DeletionPlan()
+        for capture in captures {
+            if let identifier = capture.photoIdentifier, let asset = asset(id: identifier) {
+                plan.present.append((capture.id, asset))
+            } else if capture.photoIdentifier != nil, status == .authorized {
+                plan.alreadyGone.append(capture.id)
+            } else {
+                plan.unresolved.append(capture.id)
+            }
+        }
+        return plan
     }
     static func asset(id: String) -> PHAsset? {
         guard hasAccess else { return nil }
@@ -51,5 +124,40 @@ enum PhotoService {
         try await PHPhotoLibrary.shared().performChanges {
             PHAssetChangeRequest.deleteAssets(assets as NSArray)
         }
+    }
+}
+
+enum ScreenshotPixels {
+    static func jpeg(_ image: UIImage, quality: CGFloat = 0.72) -> Data? {
+        image.jpegData(compressionQuality: quality)
+    }
+
+    static func grayscale(_ image: UIImage, width: Int = 9, height: Int = 8) -> [UInt8]? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
+        let small = renderer.image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        guard let cgImage = small.cgImage else { return nil }
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        var gray: [UInt8] = []
+        gray.reserveCapacity(width * height)
+        let drew = bytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let context = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let buffer = raw.bindMemory(to: UInt8.self)
+            for index in 0..<(width * height) {
+                let base = index * 4
+                let value = (UInt16(buffer[base]) * 3 + UInt16(buffer[base + 1]) * 6 + UInt16(buffer[base + 2])) / 10
+                gray.append(UInt8(min(value, 255)))
+            }
+            return true
+        }
+        guard drew else { return nil }
+        return gray
     }
 }

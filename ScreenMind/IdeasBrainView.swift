@@ -4,6 +4,7 @@ struct IdeasBrainView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
     var onScan: () -> Void = {}
+    var onScanAll: () -> Void = {}
     @State private var focusID = BrainGraph.rootID
 
     var body: some View {
@@ -83,6 +84,13 @@ struct IdeasBrainView: View {
             } description: {
                 Text("אחרי סריקה או שמירה, צילומים מתקבצים לנושאים לפי המרחב, הכוונה ומילות המפתח. הכול נשאר במכשיר.")
             }
+            Button(action: onScanAll) {
+                Label("סרוק את כל צילומי המסך", systemImage: "photo.stack")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(library.busy)
             Button(action: onScan) {
                 Label("סרוק צילומי מסך", systemImage: "photo.badge.magnifyingglass")
                     .frame(maxWidth: .infinity, minHeight: 32)

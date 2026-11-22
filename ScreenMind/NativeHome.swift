@@ -10,17 +10,19 @@ struct NativeHome: View {
     @State private var reviewAfterImport = false
     @State private var cleanup: CaptureSelection?
     @State private var settings = false
-    @State private var explainScan = false
+    private enum ScanPrompt { case short, album }
+    @State private var scanPrompt: ScanPrompt?
+    @State private var albumCleanup = false
     var body: some View {
         TabView(selection: $tab) {
             tabPage { home.navigationTitle("ScreenMind").toolbar { toolbar } }
                 .tabItem { Label("בית", systemImage: "house") }.tag(0)
             tabPage {
-                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) }, onScan: { explainScan = true })
+                NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) }, onScan: { scanPrompt = .short }, onScanAll: { scanPrompt = .album })
                     .navigationTitle("הספרייה").toolbar { toolbar }
             }.tabItem { Label("ספרייה", systemImage: "square.stack") }.tag(1)
             tabPage {
-                IdeasBrainView(open: { selected = $0 }, onScan: { explainScan = true })
+                IdeasBrainView(open: { selected = $0 }, onScan: { scanPrompt = .short }, onScanAll: { scanPrompt = .album })
                     .navigationTitle("המוח").toolbar { toolbar }
             }.tabItem { Label("המוח", systemImage: "brain.head.profile") }.tag(2)
             tabPage {
@@ -38,6 +40,10 @@ struct NativeHome: View {
         .sheet(isPresented: $review) { NavigationStack { NativeReviewView(requestedIDs: reviewIDs) } }
         .sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
         .sheet(isPresented: $settings) { NativeSettingsView() }
+        .sheet(isPresented: $albumCleanup) { AlbumCleanupView() }
+        .onChange(of: library.albumScan.finishedToken) { _, token in
+            if token > 0 { tab = 2 }
+        }
         .sheet(item: $library.report, onDismiss: {
             if reviewAfterImport { reviewAfterImport = false; review = true }
         }) { report in
@@ -65,11 +71,21 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
-        .confirmationDialog("סריקה רק של הצילומים שתאפשר", isPresented: $explainScan, titleVisibility: .visible) {
-            Button("אפשר גישה וסרוק") { Task { await library.scanScreenshots() } }
+        .confirmationDialog(
+            scanPrompt == .album ? "לסרוק את כל האלבום?" : "סריקה רק של הצילומים שתאפשר",
+            isPresented: Binding(get: { scanPrompt != nil }, set: { if !$0 { scanPrompt = nil } }),
+            titleVisibility: .visible
+        ) {
+            if scanPrompt == .album {
+                Button("סרוק הכול") { Task { await library.scanAllScreenshots() } }
+            } else {
+                Button("אפשר גישה וסרוק") { Task { await library.scanScreenshots() } }
+            }
             Button("ביטול", role: .cancel) {}
         } message: {
-            Text("אפשר לאשר גישה מוגבלת. בסבב נשמרים עד 20 צילומים חדשים מתוך 100 האחרונים הנגישים. מקור מ־iCloud עשוי לדרוש הורדה. לא תתבצע מחיקה.")
+            Text(scanPrompt == .album
+                 ? "כל צילומי המסך שהגישה מאפשרת. הסריקה רצה בסבבים קטנים, ואפשר להשהות. סגירה באמצע ממשיכה בפתיחה הבאה. הטקסט נשמר במכשיר עם עותק מוקטן. שום צילום לא נמחק בשלב הזה."
+                 : "אפשר לאשר גישה מוגבלת. בסבב נשמרים עד 20 צילומים חדשים מתוך 100 האחרונים הנגישים. מקור מ־iCloud עשוי לדרוש הורדה. לא תתבצע מחיקה.")
         }
     }
 
@@ -83,13 +99,64 @@ struct NativeHome: View {
         ToolbarItem(placement: .topBarTrailing) {
             PhotosPicker(selection: $picker, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
                 Label("שמור צילומים", systemImage: "plus").labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-            }.disabled(library.busy)
+            }.disabled(library.busy || library.albumScan.status == .running)
         }
         ToolbarItem(placement: .topBarLeading) {
             Button { settings = true } label: {
                 Label("הגדרות ופרטיות", systemImage: "slider.horizontal.3").labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
             }
         }
+    }
+    private var albumButtonTitle: String {
+        switch library.albumScan.status {
+        case .paused, .interrupted, .cancelled: return "המשך סריקה"
+        case .finished: return "סרוק צילומים חדשים"
+        default: return "סרוק את כל צילומי המסך"
+        }
+    }
+    private var albumCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if library.albumScan.status == .running {
+                Text("סורק את כל צילומי המסך").font(.headline)
+                ProgressView(value: library.albumScan.fraction)
+                if !library.albumScan.progressLine.isEmpty {
+                    Text(library.albumScan.progressLine).font(.subheadline).foregroundStyle(.secondary)
+                }
+                if library.albumScan.pausing {
+                    Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                Button {
+                    if library.albumScan.status == .paused || library.albumScan.status == .interrupted || library.albumScan.status == .cancelled {
+                        Task { await library.scanAllScreenshots() }
+                    } else { scanPrompt = .album }
+                } label: {
+                    Label(albumButtonTitle, systemImage: "photo.stack")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(library.busy)
+                if !library.albumScan.progressLine.isEmpty {
+                    Text(library.albumScan.progressLine).font(.subheadline).foregroundStyle(.secondary)
+                }
+                if library.albumScan.failures > 0 {
+                    Button("נסה שוב את מה שלא נקרא") { Task { await library.retryFailedAlbumScan() } }
+                        .font(.subheadline)
+                }
+            }
+            if !library.cleanupSummary.isEmpty {
+                Button { albumCleanup = true } label: {
+                    Label("בדוק מה אפשר לפנות", systemImage: "square.grid.2x2")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 22))
     }
     private var home: some View {
         ScrollView {
@@ -98,6 +165,7 @@ struct NativeHome: View {
                     Text("פחות לשמור בראש.").font(.largeTitle.weight(.semibold))
                     Text("הדברים שצילמת, והרעיונות שחיכו. עכשיו יש להם מקום.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
+                albumCard
                 if library.captures.isEmpty {
                     ContentUnavailableView {
                         Label("מתחילים בכמה צילומים.", systemImage: "photo.on.rectangle.angled")
@@ -158,7 +226,7 @@ struct NativeHome: View {
                             .buttonStyle(.bordered).controlSize(.large)
                     }
                 }
-                Button { explainScan = true } label: {
+                Button { scanPrompt = .short } label: {
                     Label("סרוק צילומי מסך באישור גישה", systemImage: "photo.badge.magnifyingglass")
                         .frame(maxWidth: .infinity, minHeight: 32)
                 }.buttonStyle(.bordered).disabled(library.busy)
@@ -205,7 +273,21 @@ struct ScanProgressBar: View {
     @EnvironmentObject private var library: NativeLibrary
     var body: some View {
         Group {
-            if library.busy && !library.progress.isEmpty {
+            if library.albumScan.status == .running {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: library.albumScan.fraction)
+                    Text(library.albumScan.progressLine).font(.subheadline).lineLimit(2)
+                        .accessibilityLabel(library.albumScan.progressLine)
+                    if library.albumScan.pausing { Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary) }
+                    HStack {
+                        Button("השהה") { library.pauseAlbumScan() }.disabled(library.albumScan.pausing)
+                        Button("בטל", role: .destructive) { library.cancelAlbumScan() }.disabled(library.albumScan.pausing)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 16)
+            } else if library.busy && !library.progress.isEmpty {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
@@ -220,5 +302,6 @@ struct ScanProgressBar: View {
         }
         .animation(.snappy, value: library.busy)
         .animation(.snappy, value: library.progress)
+        .animation(.snappy, value: library.albumScan.status)
     }
 }
