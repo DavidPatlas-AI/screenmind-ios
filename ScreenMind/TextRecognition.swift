@@ -180,25 +180,37 @@ enum TextRecognition {
         return restoreEmbeddedLTR(String(line.reversed()))
     }
 
-    /// After a whole-line reverse, put each Latin, number or punctuation run back in its own order.
+    /// After a whole-line reverse, put each Latin phrase back in its own order, including the spaces
+    /// between its words. A single token at a time would swap "Meeting Notes" into "Notes Meeting".
     private static func restoreEmbeddedLTR(_ line: String) -> String {
+        let characters = Array(line)
         var result = ""
-        var run = ""
-        func flush() {
-            if !run.isEmpty {
-                result.append(contentsOf: run.reversed())
-                run.removeAll(keepingCapacity: true)
-            }
-        }
-        for character in line {
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
             if character.isWhitespace || isHebrewLetter(character) {
-                flush()
                 result.append(character)
-            } else {
-                run.append(character)
+                index += 1
+                continue
             }
+            var run = ""
+            while index < characters.count {
+                if isHebrewLetter(characters[index]) { break }
+                if characters[index].isWhitespace {
+                    var lookahead = index
+                    while lookahead < characters.count && characters[lookahead].isWhitespace { lookahead += 1 }
+                    if lookahead >= characters.count || isHebrewLetter(characters[lookahead]) { break }
+                    while index < lookahead {
+                        run.append(characters[index])
+                        index += 1
+                    }
+                    continue
+                }
+                run.append(characters[index])
+                index += 1
+            }
+            result.append(contentsOf: run.reversed())
         }
-        flush()
         return result
     }
 
