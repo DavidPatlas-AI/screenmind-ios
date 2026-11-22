@@ -89,11 +89,12 @@ struct NativeHome: View {
         }
     }
 
-    /// The inset sits inside the tab. On the TabView it covers the tab bar.
+    /// The inset stays on the navigation stack, above the tab bar, including after a push.
     private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         NavigationStack {
-            content().safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
+            content()
         }
+        .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
     }
 
     private var scanProgress: some View {
