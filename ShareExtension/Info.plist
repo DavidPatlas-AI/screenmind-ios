@@ -9,6 +9,7 @@
 <key>CFBundlePackageType</key><string>XPC!</string>
 <key>CFBundleShortVersionString</key><string>0.3.0</string>
 <key>CFBundleVersion</key><string>1</string>
+<key>NSPhotoLibraryUsageDescription</key><string>כדי להעביר צילום מסך שביקשת למחוק אל ״נמחקו לאחרונה״. הטקסט נשאר ב־ScreenMind.</string>
 <key>NSExtension</key><dict>
 <key>NSExtensionPointIdentifier</key><string>com.apple.share-services</string>
 <key>NSExtensionPrincipalClass</key><string>$(PRODUCT_MODULE_NAME).ShareViewController</string>

@@ -1,8 +1,12 @@
 name: ScreenMind iPhone build and tests
 
-# Manual only: uploading source does not start a metered Mac job.
+# The Mac job runs for the top branch of the stack and when someone starts it by hand.
+# Pushes to the lower stack branches do not start it.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - cursor/screenshot-prompt-fda0
 
 permissions:
   contents: read
@@ -13,8 +17,8 @@ concurrency:
 
 jobs:
   simulator:
-    runs-on: macos-15
-    timeout-minutes: 25
+    runs-on: macos-latest
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -24,13 +28,26 @@ jobs:
         run: node scripts/validate-project.mjs
       - name: Check simulator selection
         run: python3 -B scripts/test_select_simulator.py
-      - name: Build and run XCTest on an available iPhone simulator
+      - name: Build and run unit tests and XCUITests on a recent iPhone simulator
         run: bash scripts/ci-simulator.sh
-      - name: Preserve build and test evidence
+      - name: Upload simulator screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ScreenMind-iOS-verification
-          path: ci-results/
+          name: ScreenMind-simulator-screenshots
+          path: ci-results/screenshots
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 14
+      - name: Upload xcresult and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ScreenMind-xcresult
+          path: |
+            ci-results/ScreenMind.xcresult
+            ci-results/build-and-test.log
+            ci-results/xcode-version.txt
+            ci-results/simulator.txt
+            ci-results/RESULT.txt
+          if-no-files-found: warn
+          retention-days: 14

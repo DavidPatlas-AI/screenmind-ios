@@ -18,6 +18,19 @@ class SimulatorSelectionTests(unittest.TestCase):
         }}
         self.assertEqual(select_device(payload), chosen)
 
+    def test_prefers_a_recent_pro_over_se_on_the_same_runtime(self):
+        def device(name, identifier):
+            return {"name": name, "udid": identifier, "isAvailable": True}
+        se = "33333333-3333-4333-8333-333333333333"
+        plain = "44444444-4444-4444-8444-444444444444"
+        pro = "55555555-5555-4555-8555-555555555555"
+        payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-18-5": [
+            device("iPhone SE", se),
+            device("iPhone 16", plain),
+            device("iPhone 16 Pro", pro),
+        ]}}
+        self.assertEqual(select_device(payload), pro)
+
     def test_rejects_missing_or_unsupported_simulators(self):
         for payload in [{}, {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-16-4": []}}]:
             with self.assertRaises(ValueError):

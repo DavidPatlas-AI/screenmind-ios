@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 @main struct ScreenMindApp: App {
     @StateObject private var library = NativeLibrary()
     @Environment(\.scenePhase) private var scenePhase
@@ -12,6 +13,9 @@ import SwiftUI
                 .modifier(UITestLaunch.DynamicType())
                 .task { await library.start() }
                 .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await library.start() } } }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+                    Task { await library.captureForegroundScreenshot() }
+                }
         }
     }
 }

@@ -43,6 +43,7 @@ enum UITestLaunch {
             for url in urls { try? manager.removeItem(at: url) }
         }
         try? manager.removeItem(at: vault.root.appendingPathComponent("scan-ledger.json"))
+        try? manager.removeItem(at: vault.root.appendingPathComponent("space-cursor.json"))
     }
 
     private struct Sample {

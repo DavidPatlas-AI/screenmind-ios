@@ -94,6 +94,7 @@ struct NativeCollectionsView: View {
                 NavigationLink {
                     NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
                         .navigationTitle(collection)
+                        .safeAreaInset(edge: .top, spacing: 0) { SpaceOfferBar() }
                         .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
                         .toolbar {
                             ToolbarItem(placement: .bottomBar) {

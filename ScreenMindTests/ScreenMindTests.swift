@@ -259,6 +259,49 @@ import UIKit
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
+    func testTwentyFiveHundredGeneratedScreenshotsClusterWithinTheBudget() {
+        let started = Date()
+        let moment = Date(timeIntervalSince1970: 1_700_000_000)
+        var captures: [Capture] = []
+        var fingerprints: [String: UInt64] = [:]
+        var jpegBytes = 0
+        captures.reserveCapacity(2_500)
+        for index in 0..<2_500 {
+            let image: UIImage = autoreleasepool {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                let renderer = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32), format: format)
+                return renderer.image { context in
+                    let shade = CGFloat((index * 37) % 220) / 255
+                    UIColor(white: shade, alpha: 1).setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+                    UIColor(white: index.isMultiple(of: 2) ? 1 : 0, alpha: 1).setFill()
+                    context.fill(CGRect(x: CGFloat(index % 16), y: CGFloat((index / 16) % 16), width: 10, height: 10))
+                }
+            }
+            let jpeg = ScreenshotPixels.jpeg(image, quality: 0.5)
+            XCTAssertNotNil(jpeg)
+            jpegBytes += jpeg?.count ?? 0
+            let pixels = ScreenshotPixels.grayscale(image, width: 9, height: 8) ?? []
+            XCTAssertEqual(pixels.count, 72)
+            let text = index % 17 == 0 ? "" : "טקסט שמור \(index) מילה"
+            var capture = idea("gen-\(index)", title: "צילום \(index)", text: text, at: moment.addingTimeInterval(Double(index)))
+            capture.photoIdentifier = String(format: "generated-%04d", index)
+            capture.textStatus = text.isEmpty ? "noText" : "complete"
+            captures.append(capture)
+            fingerprints[capture.id] = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
+        }
+        fingerprints["gen-3"] = fingerprints["gen-2"]
+        let plan = CleanupPlan.build(captures: captures, fingerprints: fingerprints)
+        let graph = BrainGraph.build(from: captures, now: moment.addingTimeInterval(4_000))
+        XCTAssertGreaterThan(jpegBytes, 2_500)
+        XCTAssertEqual(captures.count, 2_500)
+        XCTAssertTrue(plan.duplicates.contains("gen-3"))
+        XCTAssertFalse(graph.nodes.isEmpty)
+        let elapsed = Date().timeIntervalSince(started)
+        XCTAssertLessThan(elapsed, 90, "2,500 generated screenshots took \(elapsed) seconds")
+    }
+
     func testCleanupKeepsFavoritesAndSplitsDuplicatesFromJunk() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         var favorite = idea("fav", title: "חשוב", text: "טקסט חשוב לשמור בבית", at: now)
@@ -333,6 +376,29 @@ import UIKit
         XCTAssertTrue(NotesExport.markdown([note]).contains("עולם שמור כאן"))
         XCTAssertTrue(NotesExport.plain([note]).contains("שלום"))
         XCTAssertFalse(NotesExport.markdown([note]).contains("API_KEY"))
+    }
+
+    func testNewScreenshotsSkipKnownOnesAndFormatTheFreedSpace() {
+        let now = Date()
+        let fresh = NewShotPlan.fresh(
+            identifiers: ["new", "old", "known"],
+            created: [now, now.addingTimeInterval(-120), now],
+            since: now.addingTimeInterval(-30),
+            known: ["known"]
+        )
+        XCTAssertEqual(fresh, ["new"])
+        let previous = now.addingTimeInterval(-60)
+        XCTAssertEqual(NewShotPlan.nextSeen(newestIndexed: nil, previous: previous), previous)
+        XCTAssertEqual(NewShotPlan.nextSeen(newestIndexed: now, previous: previous), now)
+        XCTAssertEqual(NewShotPlan.nextSeen(newestIndexed: previous, previous: now), now)
+        XCTAssertEqual(SpaceEstimate.label(3_400_000), "כ־3.4 MB")
+        XCTAssertEqual(SpaceEstimate.label(500_000), "כ־500 KB")
+        XCTAssertEqual(SpaceEstimate.label(2_000_000), "כ־2 MB")
+        XCTAssertEqual(SpaceEstimate.bytes(fileBytes: 42, pixelWidth: 1000, pixelHeight: 1000), 42)
+        XCTAssertEqual(SpaceEstimate.bytes(fileBytes: nil, pixelWidth: 100, pixelHeight: 50), 2_500)
+        var favorite = idea("fav-shot", title: "חשוב", text: "טקסט חשוב לשמור בבית", at: now)
+        favorite.isFavorite = true
+        XCTAssertTrue(CleanupPlan.isImportant(favorite))
     }
 
     private func degree(_ id: String, _ graph: BrainGraph) -> Int {

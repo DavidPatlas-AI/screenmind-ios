@@ -11,7 +11,7 @@
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleDevelopmentRegion</key><string>he</string>
 <key>LSRequiresIPhoneOS</key><true/>
-<key>NSPhotoLibraryUsageDescription</key><string>כדי לשמור צילומי מסך שבחרת בארכיון המקומי, לסרוק צילומים נגישים ולבקש מחיקה רק אחרי סקירה, בדיקת עותק נוסף ואישור שלך.</string>
+<key>NSPhotoLibraryUsageDescription</key><string>כדי לשמור צילומי מסך שבחרת, לזהות צילום חדש כשהאפליקציה פתוחה, ולבקש מחיקה רק אחרי שהטקסט נשמר ואחרי אישור שלך.</string>
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>UILaunchScreen</key><dict/>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

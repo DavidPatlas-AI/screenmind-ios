@@ -31,6 +31,10 @@ struct ImportReport: Identifiable, Sendable {
     @Published private(set) var hebrewRecognitionSupported: Bool?
     @Published var albumScan = AlbumScanSnapshot()
     @Published var cleanupSummary = CleanupSummary()
+    @Published var spaceOffer: SpaceOffer?
+    @Published var confirmSpaceDeletion = false
+    @Published var reviewSpaceCaptures = false
+    var spaceOfferDismissed = false
     var albumLedger = ScanLedger()
     let scanGate = ScanGate()
     var scanLoopActive = false
@@ -77,6 +81,9 @@ struct ImportReport: Identifiable, Sendable {
         if let index = captures.firstIndex(where: { $0.id == stored.id }) { captures[index] = stored }
         else { captures.insert(stored, at: 0) }
     }
+    func forgetCapture(_ id: String) {
+        captures.removeAll { $0.id == id }
+    }
     @discardableResult func update(_ id: String, change: (inout Capture) -> Void) -> Bool {
         guard let vault else { return false }
         do { try vault.update(id, change: change); refresh(); return true }
@@ -105,6 +112,11 @@ struct ImportReport: Identifiable, Sendable {
         startGate = true
         defer { startGate = false }
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-UITestSpaceOffer") {
+            if spaceOfferDismissed { return }
+            spaceOffer = SpaceOffer(captureIDs: ["uitest-space"], estimatedBytes: 3_400_000, count: 2)
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("-UITestAlbumRunning") {
             if albumScan.status == .paused || albumScan.status == .cancelled { return }
             albumLedger.status = .running
@@ -133,8 +145,15 @@ struct ImportReport: Identifiable, Sendable {
                 refresh()
             }
         }
-        guard AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy else { return }
-        await scanAllScreenshots()
+        if AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy {
+            refreshSpaceOffer()
+            await scanAllScreenshots()
+            await catchNewScreenshots()
+            refreshSpaceOffer()
+            return
+        }
+        await catchNewScreenshots()
+        refreshSpaceOffer()
     }
     @discardableResult func recognize(_ capture: Capture, data: Data, overwrite: Bool = false) async throws -> Capture {
         guard let vault else { throw NativeError.message("הארכיון אינו זמין.") }
@@ -149,7 +168,7 @@ struct ImportReport: Identifiable, Sendable {
                     current.title = result.title
                 }
             }
-            current.textStatus = result.text.isEmpty ? "noText" : "complete"
+            current.textStatus = result.text.isEmpty ? "noText" : (overwrite ? "reread" : "complete")
         }
     }
     func rerecognize(_ id: String) async {

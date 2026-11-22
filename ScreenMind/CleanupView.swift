@@ -99,7 +99,7 @@ struct CleanupView: View {
                             catch { self.error = error.localizedDescription }
                         }
                     }
-                    Button("להשאיר בתמונות", role: .cancel) {}
+                    Button("להשאיר בתמונות") { confirmDeletion = false }
                 } message: { Text("רק הצילומים שברשימה ייכללו. אם iCloud Photos פעיל, המחיקה מסתנכרנת. העותקים השמורים אינם נמחקים.") }
         }
     }

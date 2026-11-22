@@ -71,6 +71,29 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
+        .alert("למחוק את הצילומים שנשמרו?", isPresented: Binding(get: { library.confirmSpaceDeletion }, set: { library.confirmSpaceDeletion = $0 })) {
+            Button("העבר לנמחקו לאחרונה", role: .destructive) {
+                Task {
+                    do { try await library.deleteOfferedScreenshots() }
+                    catch { library.error = error.localizedDescription }
+                }
+            }
+            Button("להשאיר בתמונות", role: .cancel) {}
+        } message: {
+            Text("הטקסט נשאר ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
+        }
+        .sheet(isPresented: Binding(get: { library.reviewSpaceCaptures }, set: { library.reviewSpaceCaptures = $0 })) {
+            NavigationStack {
+                List(library.captures.filter { library.spaceOffer?.captureIDs.contains($0.id) == true }) { capture in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(capture.title)
+                        Text(capture.text).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+                .navigationTitle("צילומים חדשים")
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("סיום") { library.reviewSpaceCaptures = false } } }
+            }
+        }
         .confirmationDialog(
             scanPrompt == .album ? "לסרוק את כל האלבום?" : "סריקה רק של הצילומים שתאפשר",
             isPresented: Binding(get: { scanPrompt != nil }, set: { if !$0 { scanPrompt = nil } }),
@@ -81,7 +104,7 @@ struct NativeHome: View {
             } else {
                 Button("אפשר גישה וסרוק") { Task { await library.scanScreenshots() } }
             }
-            Button("ביטול", role: .cancel) {}
+            Button("ביטול") { scanPrompt = nil }
         } message: {
             Text(scanPrompt == .album
                  ? "כל צילומי המסך שהגישה מאפשרת. הסריקה רצה בסבבים קטנים, ואפשר להשהות. סגירה באמצע ממשיכה בפתיחה הבאה. הטקסט נשמר במכשיר עם עותק מוקטן. שום צילום לא נמחק בשלב הזה."
@@ -89,10 +112,10 @@ struct NativeHome: View {
         }
     }
 
-    /// The bar sits on each screen inside the stack, so a push keeps it and lists
-    /// can scroll clear. On the `TabView` it would cover the tab bar.
+    /// The bars sit on each screen inside the stack, so a push keeps them and the
+    /// content can scroll clear. On the `TabView` they would cover the tab bar.
     private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack { content().safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() } }
+        NavigationStack { content().screenMindBars() }
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
@@ -266,6 +289,42 @@ struct CaptureTile: View {
             }.background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18)).clipShape(RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel(capture.title)
             .accessibilityValue(selected ? "נבחר" : capture.needsReview ? "ממתין לסקירה" : capture.collection)
+    }
+}
+
+extension View {
+    /// Bars live on the screen itself, inside the navigation stack. That keeps them
+    /// after a push, lets lists scroll clear, and leaves a bottom toolbar above the scan bar.
+    func screenMindBars() -> some View {
+        safeAreaInset(edge: .top, spacing: 0) { SpaceOfferBar() }
+            .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
+    }
+}
+
+struct SpaceOfferBar: View {
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        if let offer = library.spaceOffer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(offer.headline).font(.headline)
+                Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    if offer.needsAccess {
+                        Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
+                    } else {
+                        Button("בדוק") { library.reviewSpaceCaptures = true }.disabled(offer.captureIDs.isEmpty)
+                        if offer.canDelete {
+                            Button("מחק מהתמונות") { library.confirmSpaceDeletion = true }
+                        }
+                    }
+                    Button("השאר") { library.declineSpaceOffer() }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .accessibilityElement(children: .contain)
+        }
     }
 }
 
