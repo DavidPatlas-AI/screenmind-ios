@@ -17,20 +17,20 @@ struct NativeHome: View {
     @State private var reviewSpace = false
     var body: some View {
         TabView(selection: $tab) {
-            NavigationStack { home.navigationTitle("ScreenMind").toolbar { toolbar } }
+            tabPage { home.navigationTitle("ScreenMind").toolbar { toolbar } }
                 .tabItem { Label("בית", systemImage: "house") }.tag(0)
-            NavigationStack {
+            tabPage {
                 NativeLibraryView(open: { selected = $0 }, cleanup: { cleanup = CaptureSelection(ids: $0) }, onScan: { scanPrompt = .short }, onScanAll: { scanPrompt = .album })
                     .navigationTitle("הספרייה").toolbar { toolbar }
             }.tabItem { Label("ספרייה", systemImage: "square.stack") }.tag(1)
-            NavigationStack {
+            tabPage {
                 IdeasBrainView(open: { selected = $0 }, onScan: { scanPrompt = .short }, onScanAll: { scanPrompt = .album })
                     .navigationTitle("המוח").toolbar { toolbar }
             }.tabItem { Label("המוח", systemImage: "brain.head.profile") }.tag(2)
-            NavigationStack {
+            tabPage {
                 NativeCollectionsView(open: { selected = $0 }).navigationTitle("מרחבים").toolbar { toolbar }
             }.tabItem { Label("מרחבים", systemImage: "folder") }.tag(3)
-            NavigationStack {
+            tabPage {
                 NativeActionsView(open: { selected = $0 }).toolbar { toolbar }
             }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(4)
         }
@@ -73,60 +73,6 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
-        .safeAreaInset(edge: .bottom, spacing: 8) {
-            Group {
-                if library.albumScan.status == .running {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ProgressView(value: library.albumScan.fraction)
-                        Text(library.albumScan.progressLine).font(.subheadline).lineLimit(2)
-                            .accessibilityLabel(library.albumScan.progressLine)
-                        if library.albumScan.pausing { Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary) }
-                        HStack {
-                            Button("השהה") { library.pauseAlbumScan() }.disabled(library.albumScan.pausing)
-                            Button("בטל", role: .destructive) { library.cancelAlbumScan() }.disabled(library.albumScan.pausing)
-                        }
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-                    .padding(.horizontal, 16)
-                } else if library.busy && !library.progress.isEmpty {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.horizontal, 16)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(library.progress)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .animation(.snappy, value: library.busy)
-            .animation(.snappy, value: library.progress)
-            .animation(.snappy, value: library.albumScan.status)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let offer = library.spaceOffer {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(offer.headline).font(.headline)
-                    Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
-                    HStack {
-                        if offer.needsAccess {
-                            Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
-                        } else {
-                            Button("בדוק") { reviewSpace = true }.disabled(offer.captureIDs.isEmpty)
-                            Button("מחק מהתמונות") { confirmSpace = true }
-                        }
-                        Button("השאר") { library.declineSpaceOffer() }
-                    }
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial)
-                .accessibilityElement(children: .contain)
-            }
-        }
         .alert("למחוק את הצילומים שנשמרו?", isPresented: $confirmSpace) {
             Button("העבר לנמחקו לאחרונה", role: .destructive) {
                 Task {
@@ -167,6 +113,72 @@ struct NativeHome: View {
                  : "אפשר לאשר גישה מוגבלת. בסבב נשמרים עד 20 צילומים חדשים מתוך 100 האחרונים הנגישים. מקור מ־iCloud עשוי לדרוש הורדה. לא תתבצע מחיקה.")
         }
     }
+
+    /// Insets belong on the tab content. On the `TabView` itself they cover the tab bar.
+    private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        NavigationStack {
+            content()
+                .safeAreaInset(edge: .top, spacing: 0) { spaceOfferCard }
+                .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
+        }
+    }
+
+    @ViewBuilder private var spaceOfferCard: some View {
+        if let offer = library.spaceOffer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(offer.headline).font(.headline)
+                Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    if offer.needsAccess {
+                        Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
+                    } else {
+                        Button("בדוק") { reviewSpace = true }.disabled(offer.captureIDs.isEmpty)
+                        Button("מחק מהתמונות") { confirmSpace = true }
+                    }
+                    Button("השאר") { library.declineSpaceOffer() }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private var scanProgress: some View {
+        Group {
+            if library.albumScan.status == .running {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: library.albumScan.fraction)
+                    Text(library.albumScan.progressLine).font(.subheadline).lineLimit(2)
+                        .accessibilityLabel(library.albumScan.progressLine)
+                    if library.albumScan.pausing { Text("מסיים את הצילום הנוכחי…").font(.caption).foregroundStyle(.secondary) }
+                    HStack {
+                        Button("השהה") { library.pauseAlbumScan() }.disabled(library.albumScan.pausing)
+                        Button("בטל", role: .destructive) { library.cancelAlbumScan() }.disabled(library.albumScan.pausing)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 16)
+            } else if library.busy && !library.progress.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(library.progress)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: library.busy)
+        .animation(.snappy, value: library.progress)
+        .animation(.snappy, value: library.albumScan.status)
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             PhotosPicker(selection: $picker, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
