@@ -257,7 +257,7 @@ extension NativeLibrary {
             self.error = error.localizedDescription
             return
         }
-        if let vault { fingerprintStoredCaptures(vault: vault) }
+        fingerprintStoredCaptures(vault: vault)
         let known = Set(captures.compactMap(\.photoIdentifier))
         albumLedger.processed.formUnion(known)
         albumLedger.total = identifiers.count
