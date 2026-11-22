@@ -88,7 +88,9 @@ enum UITestLaunch {
                 capture.reviewedAt = sample.reviewed ? Date(timeIntervalSince1970: 1_700_000_000) : nil
                 capture.textStatus = sample.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "noText" : "complete"
                 capture.photoIdentifier = "uitest-\(index)"
-                capture.createdAt = Date(timeIntervalSince1970: 1_700_000_000 + Double(index))
+                capture.createdAt = sample.title == "שולחן אלון"
+                    ? Date(timeIntervalSince1970: 1_900_000_000)
+                    : Date(timeIntervalSince1970: 1_700_000_000 + Double(index))
             }
         }
         let saved = try vault.all()
