@@ -104,7 +104,7 @@ struct NativeHome: View {
             } else {
                 Button("אפשר גישה וסרוק") { Task { await library.scanScreenshots() } }
             }
-            Button("ביטול", role: .cancel) {}
+            Button("ביטול") { scanPrompt = nil }
         } message: {
             Text(scanPrompt == .album
                  ? "כל צילומי המסך שהגישה מאפשרת. הסריקה רצה בסבבים קטנים, ואפשר להשהות. סגירה באמצע ממשיכה בפתיחה הבאה. הטקסט נשמר במכשיר עם עותק מוקטן. שום צילום לא נמחק בשלב הזה."

@@ -63,7 +63,7 @@ struct AlbumCleanupView: View {
                         } catch { self.error = error.localizedDescription }
                     }
                 }
-                Button("להשאיר בתמונות", role: .cancel) {}
+                Button("להשאיר בתמונות") { confirm = false }
             } message: {
                 Text("\(selected.count) צילומים. הטקסט וההערות נשארים ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
             }

@@ -83,11 +83,11 @@ struct NativeReviewView: View {
         }
         .confirmationDialog("להשאיר את הצילום לבדיקה בהמשך?", isPresented: $skipping, titleVisibility: .visible) {
             Button("השאר להמשך") { if let id = session.currentID { session.finish(id, as: .deferred) } }
-            Button("חזור לעריכה", role: .cancel) {}
+            Button("חזור לעריכה") { skipping = false }
         } message: { Text("המקור נשמר. שינויים שלא אישרת במסך הזה לא יישמרו, והצילום יישאר בתיבת הסקירה.") }
         .confirmationDialog("לסיים את הסבב כאן?", isPresented: $leaving, titleVisibility: .visible) {
             Button("סיים לעכשיו") { dismiss() }
-            Button("המשך בסקירה", role: .cancel) {}
+            Button("המשך בסקירה") { leaving = false }
         } message: { Text("הצילומים שכבר אישרת נשמרו. שינויים שלא אישרת בצילום הנוכחי לא יישמרו; אפשר לחזור אליו בהמשך.") }
         .sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
     }
