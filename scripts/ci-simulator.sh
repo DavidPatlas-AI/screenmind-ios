@@ -66,7 +66,8 @@ set +e
 xcodebuild -project ScreenMind.xcodeproj -scheme ScreenMind -configuration Debug \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
   -derivedDataPath build -resultBundlePath ci-results/ScreenMind.xcresult \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" test 2>&1 | tee ci-results/build-and-test.log
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+  SWIFT_ENABLE_EXPLICIT_MODULES=NO test 2>&1 | tee ci-results/build-and-test.log
 STATUS=${PIPESTATUS[0]}
 set -e
 if [ -d /tmp/screenmind-shots ]; then
