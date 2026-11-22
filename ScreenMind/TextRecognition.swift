@@ -159,6 +159,7 @@ enum TextRecognition {
 
     /// If an engine returns Hebrew in visual (left-to-right) order, final-form letters appear at the
     /// start of words. Correct logical Hebrew keeps those forms at the end. Only then do we reverse.
+    /// Latin words, numbers and punctuation are reversed back, so a mixed line does not turn "50" into "05".
     static func normalizePossibleVisualHebrew(_ line: String) -> String {
         let scalars = Array(line)
         let letterCount = scalars.filter(isHebrewLetter).count
@@ -176,7 +177,29 @@ enum TextRecognition {
         let startScore = finalScore(words, atStart: true)
         let endScore = finalScore(words, atStart: false)
         guard startScore > endScore else { return line }
-        return String(line.reversed())
+        return restoreEmbeddedLTR(String(line.reversed()))
+    }
+
+    /// After a whole-line reverse, put each Latin, number or punctuation run back in its own order.
+    private static func restoreEmbeddedLTR(_ line: String) -> String {
+        var result = ""
+        var run = ""
+        func flush() {
+            if !run.isEmpty {
+                result.append(contentsOf: run.reversed())
+                run.removeAll(keepingCapacity: true)
+            }
+        }
+        for character in line {
+            if character.isWhitespace || isHebrewLetter(character) {
+                flush()
+                result.append(character)
+            } else {
+                run.append(character)
+            }
+        }
+        flush()
+        return result
     }
 
     private static func preparedImageData(_ data: Data) throws -> Data {
