@@ -234,9 +234,13 @@ extension NativeLibrary {
         ScanLedgerStore.save(albumLedger, vault: vault)
         scanLoopActive = true
         defer {
+            if albumLedger.status == .running {
+                if scanGate.cancel { albumLedger.status = .cancelled }
+                else if scanGate.pause { albumLedger.status = .paused }
+                else { albumLedger.status = .interrupted }
+            }
             scanLoopActive = false
-            if albumLedger.status == .running { albumLedger.status = .interrupted }
-            ScanLedgerStore.save(albumLedger, vault: vault)
+            saveScanLedger()
             publishAlbumScan()
             refresh()
             refreshCleanupSummary()
@@ -295,7 +299,7 @@ extension NativeLibrary {
                 let average = albumLedger.durations.reduce(0, +) / Double(max(albumLedger.durations.count, 1))
                 let remaining = max(0, identifiers.count - done)
                 publishAlbumScan(done: done, etaSeconds: average * Double(remaining))
-                ScanLedgerStore.save(albumLedger, vault: vault)
+                saveScanLedger()
                 await Task.yield()
             }
         }
@@ -303,20 +307,41 @@ extension NativeLibrary {
 
     func pauseAlbumScan() {
         scanGate.pause = true
-        albumScan.pausing = true
+        if scanLoopActive {
+            albumScan.pausing = true
+            saveScanLedger()
+            publishAlbumScan(etaSeconds: nil)
+            return
+        }
         albumLedger.status = .paused
-        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
+        albumScan.pausing = false
+        saveScanLedger()
         publishAlbumScan(etaSeconds: nil)
-        guard scanLoopActive else { albumScan.pausing = false; return }
     }
 
     func cancelAlbumScan() {
         scanGate.cancel = true
-        albumScan.pausing = true
+        if scanLoopActive {
+            albumScan.pausing = true
+            saveScanLedger()
+            publishAlbumScan(etaSeconds: nil)
+            return
+        }
         albumLedger.status = .cancelled
-        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
+        albumScan.pausing = false
+        saveScanLedger()
         publishAlbumScan(etaSeconds: nil)
-        guard scanLoopActive else { albumScan.pausing = false; return }
+    }
+
+    /// While a shot is still being read, the screen stays on “running” and the saved ledger already says paused or cancelled.
+    private func saveScanLedger() {
+        guard let vault else { return }
+        var persisted = albumLedger
+        if scanLoopActive {
+            if scanGate.cancel { persisted.status = .cancelled }
+            else if scanGate.pause { persisted.status = .paused }
+        }
+        ScanLedgerStore.save(persisted, vault: vault)
     }
 
     func retryFailedAlbumScan() async {
@@ -352,6 +377,9 @@ extension NativeLibrary {
         }
         if !deletion.unresolved.isEmpty {
             throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
+        }
+        if deletion.present.isEmpty {
+            throw NativeError.message("הצילומים האלה כבר לא בתמונות. ההערות נשארות ב־ScreenMind.")
         }
     }
 
