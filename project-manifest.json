@@ -14,6 +14,8 @@
     "ScreenMind/NativeLibrary.swift",
     "ScreenMind/PhotoService.swift",
     "ScreenMind/TextRecognition.swift",
+    "ScreenMind/AlbumScan.swift",
+    "ScreenMind/AlbumCleanupView.swift",
     "ScreenMind/NativeHome.swift",
     "ScreenMind/NativeActions.swift",
     "ScreenMind/LibraryViews.swift",

@@ -56,6 +56,7 @@ final class ScreenMindUITests: XCTestCase {
         let app = launch(["-UITestSeed"])
         let review = app.buttons["לסקירה"]
         XCTAssertTrue(review.waitForExistence(timeout: 8))
+        if !review.isHittable { app.swipeUp() }
         review.tap()
         XCTAssertTrue(app.staticTexts["מה חשוב לזכור? תקן אם צריך, ובחר למה שמרת את זה לפני שממשיכים."].waitForExistence(timeout: 5))
     }
@@ -95,5 +96,44 @@ final class ScreenMindUITests: XCTestCase {
             XCTAssertTrue(tab.waitForExistence(timeout: 8))
             XCTAssertTrue(tab.isHittable)
         }
+    }
+
+    func testBulkScanExplainsTheWholeAlbumBeforeItStarts() {
+        let app = launch(["-UITestReset"])
+        let scan = app.buttons["סרוק את כל צילומי המסך"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 8))
+        scan.tap()
+        XCTAssertTrue(app.buttons["סרוק הכול"].waitForExistence(timeout: 5))
+        app.buttons["ביטול"].firstMatch.tap()
+        XCTAssertTrue(app.tabBars.buttons["המוח"].exists)
+    }
+
+    func testAlbumProgressCanPauseWithoutDeleting() {
+        let app = launch(["-UITestReset", "-UITestAlbumRunning"])
+        let progress = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "400 מתוך 2500")).firstMatch
+        XCTAssertTrue(progress.waitForExistence(timeout: 8))
+        app.buttons["השהה"].tap()
+        XCTAssertTrue(app.buttons["המשך סריקה"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["העבר לנמחקו לאחרונה"].exists)
+    }
+
+    func testCleanupAsksBeforeMovingScreenshotsToRecentlyDeleted() {
+        let app = launch(["-UITestSeed"])
+        let open = app.buttons["בדוק מה אפשר לפנות"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        if !open.isHittable { app.swipeUp() }
+        open.tap()
+        XCTAssertTrue(app.staticTexts["כפילויות"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["בלי טקסט מועיל"].exists)
+        XCTAssertTrue(app.staticTexts["הטקסט כבר שמור"].exists)
+        XCTAssertTrue(app.buttons["שתף כ־Markdown"].exists)
+        XCTAssertTrue(app.buttons["שתף כטקסט"].exists)
+        let selectJunk = app.buttons["בחר את כל מה שבלי טקסט מועיל"]
+        if !selectJunk.isHittable { app.swipeUp() }
+        selectJunk.tap()
+        app.buttons["מחק את הבחירה מתמונות"].tap()
+        XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
+        app.buttons["להשאיר בתמונות"].tap()
+        XCTAssertTrue(app.staticTexts["בלי טקסט"].exists)
     }
 }
