@@ -140,7 +140,7 @@ import UIKit
         XCTAssertFalse(letters.contains("םלועםולש"), result.text)
         XCTAssertTrue(result.hebrewSupported)
     }
-    func testBrainGroupsSpacesKeywordsAndIntentWithoutTheArchive() {
+    func testBrainGroupsSpacesKeywordsAndIntentWithoutTheArchive() throws {
         let now = Date(timeIntervalSince1970: 1_763_769_600)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -173,17 +173,17 @@ import UIKit
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let today = calendar.startOfDay(for: now)
-        let due = idea("due", title: "לחזור לספק", text: "פסטה", intent: .act, task: "להתקשר", due: today.addingTimeInterval(-3600))
-        let later = idea("later", title: "לחזור אחר כך", text: "מנורה", intent: .act, task: "להשוות", due: calendar.date(byAdding: .day, value: 5, to: today))
-        var done = idea("done", title: "כבר בוצע", text: "שולחן", intent: .act, task: "למדוד", due: today.addingTimeInterval(-3600))
+        let due = idea("due", title: "לחזור לספק", text: "פסטה", intent: .act, task: "להתקשר", due: today.addingTimeInterval(-3600), at: now)
+        let later = idea("later", title: "לחזור אחר כך", text: "מנורה", intent: .act, task: "להשוות", due: calendar.date(byAdding: .day, value: 5, to: today), at: now)
+        var done = idea("done", title: "כבר בוצע", text: "שולחן", intent: .act, task: "למדוד", due: today.addingTimeInterval(-3600), at: now)
         done.taskCompletedAt = now
-        let unreviewed = idea("draft", title: "טיוטה", text: "רעיון", intent: .act, task: "לכתוב", due: today, reviewed: nil)
+        let unreviewed = idea("draft", title: "טיוטה", text: "רעיון", intent: .act, task: "לכתוב", due: today, reviewed: nil, at: now)
         let graph = BrainGraph.build(from: [due, later, done, unreviewed], now: now, calendar: calendar)
         XCTAssertEqual(graph.momentIDs, ["due"])
         XCTAssertTrue(graph.node("item:due")?.moment == true)
         XCTAssertTrue(graph.node("item:later")?.moment == false)
     }
-    func testBrainLayoutStaysInsideTheViewportForHundredsOfItems() {
+    func testBrainLayoutStaysInsideTheViewportForHundredsOfItems() throws {
         let now = Date(timeIntervalSince1970: 1_763_769_600)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
