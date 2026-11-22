@@ -116,6 +116,11 @@ struct CleanupPlan: Equatable {
         capture.isFavorite || (capture.hasTask && capture.taskCompletedAt == nil)
     }
 
+    /// A screenshot whose recognition never finished is not offered for deletion.
+    static func canSuggest(_ capture: Capture) -> Bool {
+        capture.textStatus != "failed" && capture.textStatus != "pending"
+    }
+
     static func build(captures: [Capture], fingerprints: [String: UInt64]) -> CleanupPlan {
         let indexed = captures.filter { capture in
             !capture.isArchived && capture.photoDeletedAt == nil && !(capture.photoIdentifier ?? "").isEmpty
@@ -163,11 +168,11 @@ struct CleanupPlan: Equatable {
             }
             let keeper = indexed[ranked[0]]
             if members.count > 1 {
-                for index in ranked.dropFirst() where !CleanupPlan.isImportant(indexed[index]) {
+                for index in ranked.dropFirst() where !CleanupPlan.isImportant(indexed[index]) && CleanupPlan.canSuggest(indexed[index]) {
                     plan.duplicates.append(indexed[index].id)
                 }
             }
-            if CleanupPlan.isImportant(keeper) { continue }
+            if CleanupPlan.isImportant(keeper) || !CleanupPlan.canSuggest(keeper) { continue }
             if CleanupPlan.isUseful(keeper.text) { plan.textSaved.append(keeper.id) }
             else { plan.junk.append(keeper.id) }
         }
@@ -356,19 +361,16 @@ extension NativeLibrary {
         let allowed = Set(offer.captureIDs)
         let chosen = captures.filter { allowed.contains($0.id) && $0.photoDeletedAt == nil && !CleanupPlan.isImportant($0) }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        let pairs: [(String, PHAsset)] = chosen.compactMap { capture in
-            guard let identifier = capture.photoIdentifier, let asset = PhotoService.asset(id: identifier) else { return nil }
-            return (capture.id, asset)
-        }
-        guard !pairs.isEmpty else { throw NativeError.message("הצילומים לא נמצאו בתמונות.") }
+        let (present, missing) = PhotoService.presentAndMissing(chosen)
         busy = true
         progress = "מבקש מאפל להעביר ל״נמחקו לאחרונה״…"
         defer { busy = false; progress = ""; refresh(); refreshSpaceOffer() }
-        try await PhotoService.requestDeletion(pairs.map(\.1))
-        for id in pairs.map(\.0) {
+        if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
+        let gone = present.map(\.0) + missing
+        for id in gone {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
-        SpacePromptStore.remove(Set(pairs.map(\.0)), vault: vault)
+        SpacePromptStore.remove(Set(gone), vault: vault)
         spaceOffer = nil
     }
 
@@ -447,16 +449,12 @@ extension NativeLibrary {
             ids.contains(capture.id) && allowed.contains(capture.id) && !CleanupPlan.isImportant(capture)
         }
         guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        let pairs: [(String, PHAsset)] = chosen.compactMap { capture in
-            guard let identifier = capture.photoIdentifier, let asset = PhotoService.asset(id: identifier) else { return nil }
-            return (capture.id, asset)
-        }
-        guard !pairs.isEmpty else { throw NativeError.message("הצילומים לא נמצאו בתמונות.") }
+        let (present, missing) = PhotoService.presentAndMissing(chosen)
         busy = true
         progress = "מבקש מאפל להעביר ל״נמחקו לאחרונה״…"
         defer { busy = false; progress = ""; refresh(); refreshCleanupSummary() }
-        try await PhotoService.requestDeletion(pairs.map(\.1))
-        for id in pairs.map(\.0) {
+        if !present.isEmpty { try await PhotoService.requestDeletion(present.map(\.1)) }
+        for id in present.map(\.0) + missing {
             try vault.update(id) { $0.photoDeletedAt = Date() }
         }
     }
