@@ -136,4 +136,16 @@ final class ScreenMindUITests: XCTestCase {
         app.buttons["להשאיר בתמונות"].tap()
         XCTAssertTrue(app.staticTexts["בלי טקסט"].exists)
     }
+
+    func testNewScreenshotCardAsksBeforeDeleting() {
+        let app = launch(["-UITestReset", "-UITestSpaceOffer"])
+        XCTAssertTrue(app.staticTexts["2 צילומים חדשים נשמרו במוח."].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["למחוק אותם כדי לפנות כ־3.4 MB?"].exists)
+        app.buttons["מחק מהתמונות"].tap()
+        XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
+        app.buttons["להשאיר בתמונות"].tap()
+        app.buttons["השאר"].tap()
+        let headline = app.staticTexts["2 צילומים חדשים נשמרו במוח."]
+        XCTAssertTrue(headline.waitForNonExistence(timeout: 5))
+    }
 }

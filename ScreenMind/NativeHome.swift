@@ -13,6 +13,8 @@ struct NativeHome: View {
     private enum ScanPrompt { case short, album }
     @State private var scanPrompt: ScanPrompt?
     @State private var albumCleanup = false
+    @State private var confirmSpace = false
+    @State private var reviewSpace = false
     var body: some View {
         TabView(selection: $tab) {
             NavigationStack { home.navigationTitle("ScreenMind").toolbar { toolbar } }
@@ -103,6 +105,50 @@ struct NativeHome: View {
             .animation(.snappy, value: library.busy)
             .animation(.snappy, value: library.progress)
             .animation(.snappy, value: library.albumScan.status)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let offer = library.spaceOffer {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(offer.headline).font(.headline)
+                    Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
+                    HStack {
+                        if offer.needsAccess {
+                            Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
+                        } else {
+                            Button("בדוק") { reviewSpace = true }.disabled(offer.captureIDs.isEmpty)
+                            Button("מחק מהתמונות") { confirmSpace = true }
+                        }
+                        Button("השאר") { library.declineSpaceOffer() }
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial)
+                .accessibilityElement(children: .contain)
+            }
+        }
+        .alert("למחוק את הצילומים שנשמרו?", isPresented: $confirmSpace) {
+            Button("העבר לנמחקו לאחרונה", role: .destructive) {
+                Task {
+                    do { try await library.deleteOfferedScreenshots() }
+                    catch { library.error = error.localizedDescription }
+                }
+            }
+            Button("להשאיר בתמונות", role: .cancel) {}
+        } message: {
+            Text("הטקסט נשאר ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
+        }
+        .sheet(isPresented: $reviewSpace) {
+            NavigationStack {
+                List(library.captures.filter { library.spaceOffer?.captureIDs.contains($0.id) == true }) { capture in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(capture.title)
+                        Text(capture.text).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+                .navigationTitle("צילומים חדשים")
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("סיום") { reviewSpace = false } } }
+            }
         }
         .confirmationDialog(
             scanPrompt == .album ? "לסרוק את כל האלבום?" : "סריקה רק של הצילומים שתאפשר",

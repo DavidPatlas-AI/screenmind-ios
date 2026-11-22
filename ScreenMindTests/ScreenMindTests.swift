@@ -107,6 +107,7 @@ import UIKit
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םולש 50"), "50 שלום")
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("50.00 םלוע םולש"), "שלום עולם 50.00")
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע Meeting םולש"), "שלום Meeting עולם")
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע Meeting Notes םולש"), "שלום Meeting Notes עולם")
     }
     func testHebrewLineBoxesAreJoinedRightToLeft() {
         let lines = [
@@ -319,6 +320,25 @@ import UIKit
         XCTAssertTrue(NotesExport.markdown([note]).contains("עולם שמור כאן"))
         XCTAssertTrue(NotesExport.plain([note]).contains("שלום"))
         XCTAssertFalse(NotesExport.markdown([note]).contains("API_KEY"))
+    }
+
+    func testNewScreenshotsSkipKnownOnesAndFormatTheFreedSpace() {
+        let now = Date()
+        let fresh = NewShotPlan.fresh(
+            identifiers: ["new", "old", "known"],
+            created: [now, now.addingTimeInterval(-120), now],
+            since: now.addingTimeInterval(-30),
+            known: ["known"]
+        )
+        XCTAssertEqual(fresh, ["new"])
+        XCTAssertEqual(SpaceEstimate.label(3_400_000), "כ־3.4 MB")
+        XCTAssertEqual(SpaceEstimate.label(500_000), "כ־500 KB")
+        XCTAssertEqual(SpaceEstimate.label(2_000_000), "כ־2 MB")
+        XCTAssertEqual(SpaceEstimate.bytes(fileBytes: 42, pixelWidth: 1000, pixelHeight: 1000), 42)
+        XCTAssertEqual(SpaceEstimate.bytes(fileBytes: nil, pixelWidth: 100, pixelHeight: 50), 2_500)
+        var favorite = idea("fav-shot", title: "חשוב", text: "טקסט חשוב לשמור בבית", at: now)
+        favorite.isFavorite = true
+        XCTAssertTrue(CleanupPlan.isImportant(favorite))
     }
 
     private func degree(_ id: String, _ graph: BrainGraph) -> Int {

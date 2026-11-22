@@ -10,6 +10,7 @@
     "Shared/Capture.swift",
     "Shared/Vault.swift",
     "Shared/BackupArchive.swift",
+    "Shared/SpacePrompt.swift",
     "ScreenMind/ScreenMindApp.swift",
     "ScreenMind/NativeLibrary.swift",
     "ScreenMind/PhotoService.swift",
@@ -29,6 +30,7 @@
   "shareFiles": [
     "Shared/Capture.swift",
     "Shared/Vault.swift",
+    "Shared/SpacePrompt.swift",
     "ShareExtension/ShareViewController.swift"
   ],
   "testFiles": [

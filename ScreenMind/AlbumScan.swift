@@ -319,6 +319,124 @@ extension NativeLibrary {
         await scanAllScreenshots()
     }
 
+    func captureForegroundScreenshot() async {
+        guard !scanLoopActive, !busy else { return }
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        guard !scanLoopActive, !busy else { return }
+        guard PhotoService.hasAccess else {
+            spaceOfferDismissed = false
+            spaceOffer = SpaceOffer(captureIDs: [], estimatedBytes: 0, count: 0, needsAccess: true)
+            return
+        }
+        let after = Date().addingTimeInterval(-30)
+        await importFreshScreenshots(after: after, advanceCursor: false)
+        refreshSpaceOffer()
+    }
+
+    func allowScreenshotAccess() async {
+        _ = await PhotoService.permission()
+        guard PhotoService.hasAccess else { return }
+        spaceOffer = nil
+        await captureForegroundScreenshot()
+    }
+
+    func declineSpaceOffer() {
+        spaceOfferDismissed = true
+        if let vault { SpacePromptStore.remove(Set(spaceOffer?.captureIDs ?? []), vault: vault) }
+        spaceOffer = nil
+    }
+
+    func deleteOfferedScreenshots() async throws {
+        guard let offer = spaceOffer, !offer.captureIDs.isEmpty else {
+            throw NativeError.message("אין צילום שמחכה לפינוי.")
+        }
+        guard !busy, !scanLoopActive, let vault else {
+            throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")
+        }
+        let allowed = Set(offer.captureIDs)
+        let chosen = captures.filter { allowed.contains($0.id) && $0.photoDeletedAt == nil && !CleanupPlan.isImportant($0) }
+        guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
+        let pairs: [(String, PHAsset)] = chosen.compactMap { capture in
+            guard let identifier = capture.photoIdentifier, let asset = PhotoService.asset(id: identifier) else { return nil }
+            return (capture.id, asset)
+        }
+        guard !pairs.isEmpty else { throw NativeError.message("הצילומים לא נמצאו בתמונות.") }
+        busy = true
+        progress = "מבקש מאפל להעביר ל״נמחקו לאחרונה״…"
+        defer { busy = false; progress = ""; refresh(); refreshSpaceOffer() }
+        try await PhotoService.requestDeletion(pairs.map(\.1))
+        for id in pairs.map(\.0) {
+            try vault.update(id) { $0.photoDeletedAt = Date() }
+        }
+        SpacePromptStore.remove(Set(pairs.map(\.0)), vault: vault)
+        spaceOffer = nil
+    }
+
+    func catchNewScreenshots() async {
+        guard PhotoService.hasAccess, !scanLoopActive, !busy, let vault else { return }
+        var cursor = SpacePromptStore.load(vault)
+        let now = Date()
+        guard let since = cursor.lastSeenAt else {
+            cursor.lastSeenAt = now
+            SpacePromptStore.save(cursor, vault: vault)
+            return
+        }
+        await importFreshScreenshots(after: since, advanceCursor: true)
+    }
+
+    func refreshSpaceOffer() {
+        guard let vault else { return }
+        let prompts = SpacePromptStore.load(vault).prompts.filter { prompt in
+            guard let capture = captures.first(where: { $0.id == prompt.captureID }) else { return true }
+            return capture.photoDeletedAt == nil && !CleanupPlan.isImportant(capture)
+        }
+        guard !prompts.isEmpty else { spaceOffer = nil; return }
+        spaceOffer = SpaceOffer(
+            captureIDs: prompts.map(\.captureID),
+            estimatedBytes: prompts.reduce(0) { $0 + max($1.estimatedBytes, 0) },
+            count: prompts.count
+        )
+    }
+
+    private func importFreshScreenshots(after: Date, advanceCursor: Bool) async {
+        guard let vault else { return }
+        let stamps: [PhotoService.ScreenshotStamp]
+        do {
+            stamps = try await Task.detached(priority: .utility) {
+                try PhotoService.recentScreenshots(after: after, limit: 20)
+            }.value
+        } catch { return }
+        let known = Set(captures.compactMap(\.photoIdentifier)).union(albumLedger.processed)
+        let fresh = NewShotPlan.fresh(
+            identifiers: stamps.map(\.identifier),
+            created: stamps.map(\.created),
+            since: after,
+            known: known
+        )
+        for identifier in fresh {
+            await ingest(identifier, vault: vault)
+            guard let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
+            let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
+                ?? stamps.first { $0.identifier == identifier }.map {
+                    SpaceEstimate.bytes(fileBytes: nil, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight)
+                } ?? 0
+            SpacePromptStore.enqueue(
+                SpacePrompt(captureID: capture.id, photoIdentifier: identifier, estimatedBytes: bytes, createdAt: Date()),
+                vault: vault
+            )
+            albumLedger.processed.insert(identifier)
+        }
+        guard advanceCursor else { return }
+        var cursor = SpacePromptStore.load(vault)
+        if stamps.count >= 20, let last = stamps.last?.created {
+            cursor.lastSeenAt = last
+        } else {
+            cursor.lastSeenAt = Date()
+        }
+        SpacePromptStore.save(cursor, vault: vault)
+        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
+    }
+
     func deleteSuggested(ids: Set<String>) async throws {
         guard !busy, !scanLoopActive, let vault, !ids.isEmpty else {
             throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")

@@ -20,6 +20,45 @@ enum PhotoService {
         PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in assets.append(asset) }
         return assets
     }
+    struct ScreenshotStamp: Equatable {
+        var identifier: String
+        var created: Date
+        var pixelWidth: Int
+        var pixelHeight: Int
+    }
+    static func recentScreenshots(after: Date, limit: Int) throws -> [ScreenshotStamp] {
+        guard hasAccess else { throw NativeError.message("אפשר לבחור תמונות בלי הרשאה מלאה, או לאפשר גישה לתמונות בהגדרות.") }
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(
+            format: "(mediaSubtype & %d) != 0 AND creationDate > %@",
+            Int(PHAssetMediaSubtype.photoScreenshot.rawValue), after as NSDate
+        )
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        options.fetchLimit = limit
+        var stamps: [ScreenshotStamp] = []
+        PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
+            stamps.append(ScreenshotStamp(
+                identifier: asset.localIdentifier,
+                created: asset.creationDate ?? .distantPast,
+                pixelWidth: asset.pixelWidth,
+                pixelHeight: asset.pixelHeight
+            ))
+        }
+        return stamps
+    }
+    static func estimatedPhotoBytes(_ asset: PHAsset) -> Int {
+        let resources = PHAssetResource.assetResources(for: asset)
+        var fileSize = 0
+        for resource in resources {
+            if let number = resource.value(forKey: "fileSize") as? NSNumber { fileSize += number.intValue }
+            else if let intSize = resource.value(forKey: "fileSize") as? Int { fileSize += intSize }
+        }
+        return SpaceEstimate.bytes(
+            fileBytes: fileSize > 0 ? fileSize : nil,
+            pixelWidth: asset.pixelWidth,
+            pixelHeight: asset.pixelHeight
+        )
+    }
     static func screenshotIdentifiers() throws -> [String] {
         guard hasAccess else { throw NativeError.message("אפשר לבחור תמונות בלי הרשאה מלאה, או לאפשר גישה לתמונות בהגדרות.") }
         let options = PHFetchOptions()

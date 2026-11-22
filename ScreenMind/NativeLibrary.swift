@@ -31,6 +31,8 @@ struct ImportReport: Identifiable, Sendable {
     @Published private(set) var hebrewRecognitionSupported: Bool?
     @Published var albumScan = AlbumScanSnapshot()
     @Published var cleanupSummary = CleanupSummary()
+    @Published var spaceOffer: SpaceOffer?
+    var spaceOfferDismissed = false
     var albumLedger = ScanLedger()
     let scanGate = ScanGate()
     var scanLoopActive = false
@@ -92,6 +94,11 @@ struct ImportReport: Identifiable, Sendable {
         startGate = true
         defer { startGate = false }
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-UITestSpaceOffer") {
+            if spaceOfferDismissed { return }
+            spaceOffer = SpaceOffer(captureIDs: ["uitest-space"], estimatedBytes: 3_400_000, count: 2)
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("-UITestAlbumRunning") {
             if albumScan.status == .paused || albumScan.status == .cancelled { return }
             albumLedger.status = .running
@@ -120,8 +127,13 @@ struct ImportReport: Identifiable, Sendable {
                 refresh()
             }
         }
-        guard AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy else { return }
-        await scanAllScreenshots()
+        if AlbumPlan.shouldResume(albumLedger.status), PhotoService.hasAccess, !busy {
+            refreshSpaceOffer()
+            await scanAllScreenshots()
+            return
+        }
+        await catchNewScreenshots()
+        refreshSpaceOffer()
     }
     @discardableResult func recognize(_ capture: Capture, data: Data, overwrite: Bool = false) async throws -> Capture {
         guard let vault else { throw NativeError.message("הארכיון אינו זמין.") }

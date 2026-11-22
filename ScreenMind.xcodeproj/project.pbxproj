@@ -24,6 +24,12 @@
 			"path" = "Shared/BackupArchive.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"28779F834F1B1400EFE81585" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/SpacePrompt.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"B460919AF52A5DD3F2B82401" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -204,6 +210,7 @@
 				"0FC1205A42E797252840533B",
 				"A3491A99DBD2A5A75C0A70EB",
 				"E6A18FD3D251F5B458EBF1F3",
+				"28779F834F1B1400EFE81585",
 				"B460919AF52A5DD3F2B82401",
 				"5364E332FEB61813A2E7F3D0",
 				"0948A06724F141B9D0688B85",
@@ -338,6 +345,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "A3491A99DBD2A5A75C0A70EB";
 		};
+		"7E1D0B9515E4AB211B261813" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "28779F834F1B1400EFE81585";
+		};
 		"287356989F16A4BF365AC83A" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "B9CE73AF3A86EDC68E13D1B3";
@@ -348,6 +359,7 @@
 			"files" = (
 				"FE65FDF9A4DCC65F8CDA9DE4",
 				"8AD990A9C70305A690B55090",
+				"7E1D0B9515E4AB211B261813",
 				"287356989F16A4BF365AC83A",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
@@ -459,6 +471,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E6A18FD3D251F5B458EBF1F3";
 		};
+		"B7193C9C29BA55059AF7A8E0" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "28779F834F1B1400EFE81585";
+		};
 		"348D04E75C0A6370C4223C74" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "B460919AF52A5DD3F2B82401";
@@ -526,6 +542,7 @@
 				"5FA3B6841DF2B65371483BA6",
 				"6B667895D273DF57B4CC4C79",
 				"94B93468CA9234C6C3B61C7F",
+				"B7193C9C29BA55059AF7A8E0",
 				"348D04E75C0A6370C4223C74",
 				"09924CAF4FFBA3E7F038F38C",
 				"C5126D3A1B98451773732985",
