@@ -1,0 +1,4 @@
+heb.traineddata and eng.traineddata are unmodified files from
+https://github.com/tesseract-ocr/tessdata_fast
+License: Apache License 2.0 (see LICENSE in this folder).
+They are the integer LSTM models used by on-device Tesseract.

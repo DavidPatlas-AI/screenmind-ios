@@ -8,6 +8,8 @@ xcodebuild -project ScreenMind.xcodeproj -scheme ScreenMind -configuration Relea
   2>&1 | tee ci-results/device-build.log
 APP="build-personal/Build/Products/Release-iphoneos/ScreenMind.app"
 test -f "$APP/ScreenMind"
+test -f "$APP/tessdata/heb.traineddata"
+test -f "$APP/tessdata/eng.traineddata"
 test ! -d "$APP/PlugIns"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "app.screenmind.next.personal"
 file "$APP/ScreenMind" | grep -q arm64

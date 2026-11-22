@@ -129,6 +129,20 @@
 			"path" = "ScreenMind/PrivacyInfo.xcprivacy";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"C5BB9D9C3912130D0D281A78" = {
+			"isa" = "PBXFileReference";
+			"name" = "tessdata";
+			"lastKnownFileType" = "folder";
+			"path" = "ScreenMind/tessdata";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"29BDD6188CEC16EE1B8AD40A" = {
+			"isa" = "PBXFileReference";
+			"name" = "hebrew-sample.png";
+			"lastKnownFileType" = "image.png";
+			"path" = "ScreenMindTests/Fixtures/hebrew-sample.png";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"104580BEB8655873EA66590B" = {
 			"isa" = "PBXGroup";
 			"name" = "Products";
@@ -160,6 +174,8 @@
 				"9CFEDFD379757D79B05746C6",
 				"E5DE98CB82B342A812918DA0",
 				"DF9D0E0479C31175E5892161",
+				"C5BB9D9C3912130D0D281A78",
+				"29BDD6188CEC16EE1B8AD40A",
 			);
 			"sourceTree" = "<group>";
 		};
@@ -190,6 +206,23 @@
 				"6DF0AE76F566470A58B38461",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"A819C07E0B39E408A05BE1A1" = {
+			"isa" = "XCRemoteSwiftPackageReference";
+			"repositoryURL" = "https://github.com/lexiaoyao20/tesseract-Apple.git";
+			"requirement" = {
+				"kind" = "exactVersion";
+				"version" = "5.5.2";
+			};
+		};
+		"C30F983361927A194829ED83" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "A819C07E0B39E408A05BE1A1";
+			"productName" = "TesseractSwift";
+		};
+		"7F2716B2352BF52DEE5C768D" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "C30F983361927A194829ED83";
 		};
 		"8B6867880FC1B7B3E32BF990" = {
 			"isa" = "XCBuildConfiguration";
@@ -440,7 +473,7 @@
 			"isa" = "PBXFrameworksBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = (
-
+				"7F2716B2352BF52DEE5C768D",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
@@ -452,12 +485,17 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "DF9D0E0479C31175E5892161";
 		};
+		"6A72176AB86C50C405C33066" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C5BB9D9C3912130D0D281A78";
+		};
 		"83AADB9322D2BD68DBBEEA58" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = (
 				"F6112DEF5B7F964341B625FD",
 				"144F0EEE8B7F8429A6DAE5B4",
+				"6A72176AB86C50C405C33066",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
@@ -491,6 +529,9 @@
 			);
 			"dependencies" = (
 				"EFCA12AAD0B9AE12F6F10212",
+			);
+			"packageProductDependencies" = (
+				"C30F983361927A194829ED83",
 			);
 		};
 		"333427A5DD22EDB2D32FDCAA" = {
@@ -567,11 +608,15 @@
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
+		"C1355613701AD4E486B24954" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "29BDD6188CEC16EE1B8AD40A";
+		};
 		"1430F84C95BCBDD38E28BA73" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = (
-
+				"C1355613701AD4E486B24954",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
@@ -686,6 +731,9 @@
 				"Base",
 			);
 			"mainGroup" = "E7DCF620CC9858063A87B7CB";
+			"packageReferences" = (
+				"A819C07E0B39E408A05BE1A1",
+			);
 			"productRefGroup" = "104580BEB8655873EA66590B";
 			"projectDirPath" = "";
 			"projectRoot" = "";
