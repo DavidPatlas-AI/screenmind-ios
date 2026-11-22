@@ -13,8 +13,8 @@ struct AlbumCleanupView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+            List {
+                Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(completed ? "הטקסט נשאר כאן." : "אפשר לפנות, בלי לאבד את מה שקראנו.").font(.title3.weight(.semibold))
                         Text(completed
@@ -28,13 +28,14 @@ struct AlbumCleanupView: View {
                         ShareLink(item: plain) { Label("שתף כטקסט", systemImage: "text.alignright") }
                             .buttonStyle(.bordered)
                     }
-                    category(title: "כפילויות", detail: "צילום כמעט זהה לאחר. נשמר זה עם יותר טקסט.", ids: plan.duplicates, select: "בחר את כל הכפילויות", clear: "נקה את הכפילויות")
-                    category(title: "בלי טקסט מועיל", detail: "אין כאן משפט שאפשר לחזור אליו.", ids: plan.junk, select: "בחר את כל מה שבלי טקסט מועיל", clear: "נקה את מה שבלי טקסט")
-                    category(title: "הטקסט כבר שמור", detail: "הטקסט בארכיון. אפשר להשאיר את הצילום אם הוא עדיין חשוב.", ids: plan.textSaved, select: "בחר את כל מה שהטקסט שלו שמור", clear: "נקה את מה שהטקסט שלו שמור")
                     if let error { Text(error).foregroundStyle(.red) }
                 }
-                .padding(20)
+                category(title: "כפילויות", detail: "צילום כמעט זהה לאחר. נשמר זה עם יותר טקסט.", ids: plan.duplicates, select: "בחר את כל הכפילויות", clear: "נקה את הכפילויות")
+                category(title: "בלי טקסט מועיל", detail: "אין כאן משפט שאפשר לחזור אליו.", ids: plan.junk, select: "בחר את כל מה שבלי טקסט מועיל", clear: "נקה את מה שבלי טקסט")
+                category(title: "הטקסט כבר שמור", detail: "הטקסט בארכיון. אפשר להשאיר את הצילום אם הוא עדיין חשוב.", ids: plan.textSaved, select: "בחר את כל מה שהטקסט שלו שמור", clear: "נקה את מה שהטקסט שלו שמור")
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .background(NativeTheme.canvas)
             .navigationTitle("אפשר לפנות")
             .navigationBarTitleDisplayMode(.inline)
@@ -77,7 +78,10 @@ struct AlbumCleanupView: View {
     private func category(title: String, detail: String, ids: [String], select: String, clear: String) -> some View {
         let chosen = ids.filter { selected.contains($0) }
         let all = !ids.isEmpty && chosen.count == ids.count
-        return VStack(alignment: .leading, spacing: 10) {
+        let rows = stride(from: 0, to: ids.count, by: 3).map { start in
+            Array(ids[start..<min(start + 3, ids.count)])
+        }
+        return Section {
             Text(title).font(.title3.weight(.semibold))
             Text(ids.isEmpty ? "אין כאן צילומים." : detail).font(.subheadline).foregroundStyle(.secondary)
             if !ids.isEmpty {
@@ -85,10 +89,12 @@ struct AlbumCleanupView: View {
                     if all { selected.subtract(ids) } else { selected.formUnion(ids) }
                 }
                 .buttonStyle(.bordered)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
-                    ForEach(ids, id: \.self) { id in
-                        if let capture = library.captures.first(where: { $0.id == id }) {
-                            cell(capture)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 10) {
+                        ForEach(row, id: \.self) { id in
+                            if let capture = library.captures.first(where: { $0.id == id }) {
+                                cell(capture)
+                            }
                         }
                     }
                 }

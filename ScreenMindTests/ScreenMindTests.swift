@@ -264,15 +264,19 @@ import UIKit
         var favorite = idea("fav", title: "חשוב", text: "טקסט חשוב לשמור בבית", at: now)
         favorite.isFavorite = true
         favorite.photoIdentifier = "fav-photo"
+        favorite.textStatus = "complete"
         var copy = idea("copy", title: "עותק", text: "טקסט חשוב לשמור בבית", at: now.addingTimeInterval(10))
         copy.photoIdentifier = "copy-photo"
+        copy.textStatus = "complete"
         var junk = idea("junk", title: "רעש", text: "", at: now.addingTimeInterval(20))
         junk.photoIdentifier = "junk-photo"
         junk.textStatus = "noText"
         var saved = idea("saved", title: "פתק ארוך", text: "רשימת קניות לשבת בבוקר", at: now.addingTimeInterval(30))
         saved.photoIdentifier = "saved-photo"
+        saved.textStatus = "complete"
         var task = idea("task", title: "שיחה", text: "להתקשר לספק מחר בבוקר", intent: .act, task: "להתקשר", at: now)
         task.photoIdentifier = "task-photo"
+        task.textStatus = "complete"
         let plan = CleanupPlan.build(
             captures: [favorite, copy, junk, saved, task],
             fingerprints: [
@@ -289,6 +293,13 @@ import UIKit
         XCTAssertFalse(plan.duplicates.contains("fav"))
         XCTAssertFalse(plan.textSaved.contains("task"))
         XCTAssertFalse(plan.junk.contains("task"))
+        var failed = idea("failed", title: "נכשל", text: "", at: now.addingTimeInterval(40))
+        failed.photoIdentifier = "failed-photo"
+        failed.textStatus = "failed"
+        let held = CleanupPlan.build(captures: [failed], fingerprints: [failed.id: 1])
+        XCTAssertTrue(held.junk.isEmpty)
+        XCTAssertTrue(held.duplicates.isEmpty)
+        XCTAssertTrue(held.textSaved.isEmpty)
     }
 
     func testNearDuplicateHashIgnoresATinyPixelChange() {

@@ -31,15 +31,15 @@ enum PhotoService {
         }
         return identifiers
     }
-    // A point size that lands near maxPixel pixels, so the photo library does the shrink.
+    /// An `.exact` request is sized in pixels. Dividing by the screen scale would ask for about a third of `maxPixel` on a 3x phone.
     static func downscaled(_ asset: PHAsset, maxPixel: Int) async throws -> UIImage {
         let longest = max(asset.pixelWidth, asset.pixelHeight)
         let pixels = longest > 0 ? min(maxPixel, longest) : maxPixel
-        let points = CGFloat(pixels) / max(UIScreen.main.scale, 1)
+        let edge = CGFloat(pixels)
         let aspect = longest > 0 ? CGFloat(max(asset.pixelWidth, 1)) / CGFloat(max(asset.pixelHeight, 1)) : 1
         let target = asset.pixelWidth >= asset.pixelHeight
-            ? CGSize(width: points, height: max(points / max(aspect, 0.01), 1))
-            : CGSize(width: max(points * aspect, 1), height: points)
+            ? CGSize(width: edge, height: max(edge / max(aspect, 0.01), 1))
+            : CGSize(width: max(edge * aspect, 1), height: edge)
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
@@ -70,6 +70,18 @@ enum PhotoService {
                 continuation.resume(returning: image)
             }
         }
+    }
+    static func presentAndMissing(_ captures: [Capture]) -> (present: [(String, PHAsset)], missing: [String]) {
+        var present: [(String, PHAsset)] = []
+        var missing: [String] = []
+        for capture in captures {
+            if let identifier = capture.photoIdentifier, let asset = asset(id: identifier) {
+                present.append((capture.id, asset))
+            } else {
+                missing.append(capture.id)
+            }
+        }
+        return (present, missing)
     }
     static func asset(id: String) -> PHAsset? {
         guard hasAccess else { return nil }
