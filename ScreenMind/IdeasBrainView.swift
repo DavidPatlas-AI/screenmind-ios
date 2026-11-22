@@ -116,7 +116,6 @@ struct IdeasBrainView: View {
                 }
                 .environment(\.layoutDirection, .leftToRight)
             }
-            .environment(\.layoutDirection, .leftToRight)
     }
 
     private func activate(_ node: BrainNode) {

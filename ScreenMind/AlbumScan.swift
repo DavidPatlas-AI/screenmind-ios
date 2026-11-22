@@ -259,7 +259,9 @@ extension NativeLibrary {
         }
         fingerprintStoredCaptures(vault: vault)
         let known = Set(captures.compactMap(\.photoIdentifier))
-        albumLedger.processed.formUnion(known)
+        for identifier in identifiers where known.contains(identifier) {
+            albumLedger.processed.insert(identifier)
+        }
         albumLedger.total = identifiers.count
         var done = identifiers.reduce(into: 0) { if albumLedger.processed.contains($1) { $0 += 1 } }
         publishAlbumScan(done: done, etaSeconds: nil)
@@ -302,19 +304,19 @@ extension NativeLibrary {
     func pauseAlbumScan() {
         scanGate.pause = true
         albumScan.pausing = true
-        guard !scanLoopActive else { return }
         albumLedger.status = .paused
-        albumScan.pausing = false
+        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
         publishAlbumScan(etaSeconds: nil)
+        guard scanLoopActive else { albumScan.pausing = false; return }
     }
 
     func cancelAlbumScan() {
         scanGate.cancel = true
         albumScan.pausing = true
-        guard !scanLoopActive else { return }
         albumLedger.status = .cancelled
-        albumScan.pausing = false
+        if let vault { ScanLedgerStore.save(albumLedger, vault: vault) }
         publishAlbumScan(etaSeconds: nil)
+        guard scanLoopActive else { albumScan.pausing = false; return }
     }
 
     func retryFailedAlbumScan() async {
