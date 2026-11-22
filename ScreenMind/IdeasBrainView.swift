@@ -103,13 +103,16 @@ struct IdeasBrainView: View {
     private func canvas(graph: BrainGraph, scene: BrainScene) -> some View {
         BrainCanvas(graph: graph, scene: scene)
             .frame(width: scene.contentWidth, height: max(scene.contentHeight, 280))
-            .contentShape(Rectangle())
-            .gesture(SpatialTapGesture().onEnded { value in
-                let point = BrainPoint(x: value.location.x, y: value.location.y)
-                guard let id = scene.hit(point), let node = graph.node(id) else { return }
-                activate(node)
-            })
-            .accessibilityRepresentation { accessTree(graph: graph, scene: scene) }
+            .overlay {
+                ForEach(scene.placements) { placement in
+                    if let node = graph.node(placement.id) {
+                        Button { activate(node) } label: { Color.clear }
+                            .frame(width: placement.width, height: placement.height)
+                            .position(x: placement.center.x, y: placement.center.y)
+                            .accessibilityLabel(node.accessibilityText)
+                    }
+                }
+            }
     }
 
     private func activate(_ node: BrainNode) {
@@ -127,18 +130,6 @@ struct IdeasBrainView: View {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) { focusID = id }
     }
 
-    @ViewBuilder private func accessTree(graph: BrainGraph, scene: BrainScene) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if scene.focusID != BrainGraph.rootID {
-                Button("כל המוח") { focus(BrainGraph.rootID) }
-            }
-            ForEach(scene.placements) { placement in
-                if let node = graph.node(placement.id) {
-                    Button(node.accessibilityText) { activate(node) }
-                }
-            }
-        }
-    }
 }
 
 private struct BrainCanvas: View {

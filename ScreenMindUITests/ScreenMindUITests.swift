@@ -148,14 +148,15 @@ final class ScreenMindUITests: XCTestCase {
         if !open.isHittable { app.swipeUp() }
         open.tap()
         XCTAssertTrue(app.staticTexts["כפילויות"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["שתף כ־Markdown"].exists)
+        XCTAssertTrue(app.buttons["שתף כטקסט"].exists)
         XCTAssertTrue(app.staticTexts["בלי טקסט מועיל"].exists)
         let savedHeading = app.staticTexts["הטקסט כבר שמור"]
         if !savedHeading.waitForExistence(timeout: 2) { app.swipeUp() }
         XCTAssertTrue(savedHeading.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["שתף כ־Markdown"].exists)
-        XCTAssertTrue(app.buttons["שתף כטקסט"].exists)
         let selectJunk = app.buttons["בחר את כל מה שבלי טקסט מועיל"]
-        if !selectJunk.isHittable { app.swipeUp() }
+        if !selectJunk.isHittable { app.swipeDown() }
+        if !selectJunk.isHittable { app.swipeDown() }
         selectJunk.tap()
         app.buttons["מחק את הבחירה מתמונות"].tap()
         XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
