@@ -114,13 +114,14 @@ struct NativeHome: View {
         }
     }
 
-    /// Insets belong on the tab content. On the `TabView` itself they cover the tab bar.
+    /// Insets belong on the navigation stack. On the `TabView` they cover the tab bar,
+    /// and on the root screen they disappear when a collection is pushed.
     private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         NavigationStack {
             content()
-                .safeAreaInset(edge: .top, spacing: 0) { spaceOfferCard }
-                .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { spaceOfferCard }
+        .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
     }
 
     @ViewBuilder private var spaceOfferCard: some View {
