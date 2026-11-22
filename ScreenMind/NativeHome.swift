@@ -126,6 +126,7 @@ struct NativeHome: View {
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
                             .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
                     }.buttonStyle(.plain)
+                        .accessibilityLabel(library.pending.isEmpty ? "אין צילומים לסקירה" : "לסקירה")
                     Button { tab = 2 } label: {
                         HStack(spacing: 14) {
                             Image(systemName: "brain.head.profile").font(.title2)
@@ -136,7 +137,7 @@ struct NativeHome: View {
                             Spacer()
                             Image(systemName: "chevron.backward")
                         }.padding(18).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plain).accessibilityLabel("המוח של הרעיונות")
                     let actions = library.active.filter { $0.hasTask && $0.reviewedAt != nil && $0.taskCompletedAt == nil }
                     if !actions.isEmpty {
                         Button { tab = 4 } label: {

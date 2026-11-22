@@ -20,7 +20,9 @@ for(const object of Object.values(objects)){
  if(object.isa==="PBXFileReference"&&object.sourceTree==="SOURCE_ROOT")assert.ok(fs.existsSync(path.join(root,object.path)),"Missing resource "+object.path);
  if(object.isa==="PBXSourcesBuildPhase")for(const ref of object.files){const file=objects[objects[ref].fileRef];assert.equal(file.lastKnownFileType,"sourcecode.swift","Folders must never be compiled as source");}
 }
-for(const [targetID,expected] of [[manifest.appID,manifest.appFiles],[manifest.shareID,manifest.shareFiles],[manifest.testID,manifest.testFiles]]){
+const membership = [[manifest.appID,manifest.appFiles],[manifest.shareID,manifest.shareFiles],[manifest.testID,manifest.testFiles]];
+if(manifest.uiTestID) membership.push([manifest.uiTestID,manifest.uiTestFiles]);
+for(const [targetID,expected] of membership){
  const target=objects[targetID];const compiled=target.buildPhases.map(id=>objects[id]).filter(phase=>phase.isa==="PBXSourcesBuildPhase").flatMap(phase=>phase.files.map(id=>objects[objects[id].fileRef].path));
  assert.deepEqual(compiled.sort(),[...expected].sort());
 }
@@ -28,7 +30,7 @@ const app=objects[manifest.appID];assert.ok(app.dependencies.some(id=>objects[id
 assert.ok(app.buildPhases.map(id=>objects[id]).some(phase=>phase.isa==="PBXCopyFilesBuildPhase"&&phase.dstSubfolderSpec===13));
 for(const name of ["ScreenMind/ScreenMind.entitlements","ShareExtension/ScreenMindShare.entitlements"])assert.ok(fs.readFileSync(path.join(root,name),"utf8").includes("<string>"+manifest.group+"</string>"));
 assert.ok(fs.readFileSync(path.join(root,"Shared/Vault.swift"),"utf8").includes('static let groupID = "'+manifest.group+'"'));
-for(const name of new Set([...manifest.appFiles,...manifest.shareFiles,...manifest.testFiles])){
+for(const name of new Set([...manifest.appFiles,...manifest.shareFiles,...manifest.testFiles,...(manifest.uiTestFiles||[])])){
  const swift=fs.readFileSync(path.join(root,name),"utf8"),stack=[];
  let i=0;
  while(i<swift.length){

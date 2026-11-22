@@ -38,8 +38,12 @@ struct ImportReport: Identifiable, Sendable {
     init() {
         thumbnails.countLimit = 60
         thumbnails.totalCostLimit = 32 * 1024 * 1024
-        do { vault = try Vault(); refresh() }
-        catch { self.error = error.localizedDescription }
+        do {
+            let opened = try Vault()
+            vault = opened
+            try UITestLaunch.prepare(opened)
+            refresh()
+        } catch { self.error = error.localizedDescription }
         hebrewRecognitionSupported = TextRecognition.hebrewDataAvailable
     }
     func refresh() {

@@ -5,6 +5,7 @@
   "appID": "FE0289A217903CA7910059BF",
   "shareID": "055625396203000B57D3F610",
   "testID": "653D801C27E3BF3AF30657C0",
+  "uiTestID": "6D71C849EE0E2A2DCDF65E22",
   "appFiles": [
     "Shared/Capture.swift",
     "Shared/Vault.swift",
@@ -20,7 +21,8 @@
     "ScreenMind/CaptureDetail.swift",
     "ScreenMind/CleanupView.swift",
     "ScreenMind/IdeasBrain.swift",
-    "ScreenMind/IdeasBrainView.swift"
+    "ScreenMind/IdeasBrainView.swift",
+    "ScreenMind/UITestLaunch.swift"
   ],
   "shareFiles": [
     "Shared/Capture.swift",
@@ -29,5 +31,8 @@
   ],
   "testFiles": [
     "ScreenMindTests/ScreenMindTests.swift"
+  ],
+  "uiTestFiles": [
+    "ScreenMindUITests/ScreenMindUITests.swift"
   ]
 }

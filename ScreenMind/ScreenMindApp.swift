@@ -8,6 +8,8 @@ import SwiftUI
                 .environment(\.layoutDirection, .rightToLeft)
                 .environment(\.locale, Locale(identifier: "he"))
                 .tint(NativeTheme.accent)
+                .preferredColorScheme(UITestLaunch.colorScheme)
+                .modifier(UITestLaunch.DynamicType())
                 .task { await library.start() }
                 .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await library.start() } } }
         }
