@@ -4,7 +4,7 @@
 
 ## בנייה
 - Build של ScreenMind כולל ScreenMindShare.appex.
-- Product → Test מריץ 21 בדיקות יחידה ו־10 בדיקות ממשק.
+- Product → Test מריץ 22 בדיקות יחידה ו־10 בדיקות ממשק.
 - שני היעדים חתומים באותו Team וה־App Group נגיש לשניהם.
 - אין שגיאות Archive או App Store validation, ונוצר דוח פרטיות ב־Xcode.
 

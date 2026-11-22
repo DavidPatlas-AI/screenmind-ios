@@ -12,6 +12,20 @@ final class ScreenMindUITests: XCTestCase {
         return app
     }
 
+    private func snap(_ name: String) {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let raw = ProcessInfo.processInfo.environment["SCREENMIND_SHOTS"] ?? ""
+        let folder = raw.isEmpty || raw.contains("$(")
+            ? URL(fileURLWithPath: "/tmp/screenmind-shots", isDirectory: true)
+            : URL(fileURLWithPath: raw, isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? shot.pngRepresentation.write(to: folder.appendingPathComponent("\(name).png"))
+    }
+
     func testFreshLaunchShowsHebrewTabsAndAnEmptyLibrary() {
         let app = launch(["-UITestReset"])
         XCTAssertTrue(app.tabBars.buttons["בית"].waitForExistence(timeout: 8))
@@ -20,6 +34,7 @@ final class ScreenMindUITests: XCTestCase {
         }
         XCTAssertTrue(app.staticTexts["מתחילים בכמה צילומים."].exists)
         XCTAssertTrue(app.buttons["שמור צילומים"].exists)
+        snap("01-home-empty")
 
         app.tabBars.buttons["ספרייה"].tap()
         let scan = app.buttons["סרוק צילומי מסך"]
@@ -30,6 +45,7 @@ final class ScreenMindUITests: XCTestCase {
 
         app.tabBars.buttons["המוח"].tap()
         XCTAssertTrue(app.staticTexts["המוח מתמלא מצילומים."].waitForExistence(timeout: 5))
+        snap("02-brain-empty")
     }
 
     func testSeededBrainOpensATopicAndRereadsTheSource() {
@@ -50,6 +66,7 @@ final class ScreenMindUITests: XCTestCase {
         reread.tap()
         let finished = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "לא נמצא טקסט", "הזיהוי לא הושלם")).firstMatch
         XCTAssertTrue(finished.waitForExistence(timeout: 30))
+        snap("03-source-reread")
     }
 
     func testReviewAsksWhyTheScreenshotWasSaved() {
@@ -59,6 +76,7 @@ final class ScreenMindUITests: XCTestCase {
         if !review.isHittable { app.swipeUp() }
         review.tap()
         XCTAssertTrue(app.staticTexts["מה חשוב לזכור? תקן אם צריך, ובחר למה שמרת את זה לפני שממשיכים."].waitForExistence(timeout: 5))
+        snap("04-review-why")
     }
 
     func testFavoriteSurvivesRelaunch() {
@@ -80,6 +98,7 @@ final class ScreenMindUITests: XCTestCase {
         again.buttons["שולחן אלון"].tap()
         again.swipeUp()
         XCTAssertTrue(again.buttons["הסר ממועדפים"].waitForExistence(timeout: 8))
+        snap("05-favorite-kept")
     }
 
     func testSettingsDescribeOnDeviceHebrew() {
@@ -87,6 +106,7 @@ final class ScreenMindUITests: XCTestCase {
         app.buttons["הגדרות ופרטיות"].tap()
         let note = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Tesseract")).firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 5))
+        snap("06-settings-on-device")
     }
 
     func testLargeTextAndDarkModeKeepTheTabsReachable() {
@@ -96,6 +116,7 @@ final class ScreenMindUITests: XCTestCase {
             XCTAssertTrue(tab.waitForExistence(timeout: 8))
             XCTAssertTrue(tab.isHittable)
         }
+        snap("07-large-text-dark")
     }
 
     func testBulkScanExplainsTheWholeAlbumBeforeItStarts() {
@@ -104,6 +125,7 @@ final class ScreenMindUITests: XCTestCase {
         XCTAssertTrue(scan.waitForExistence(timeout: 8))
         scan.tap()
         XCTAssertTrue(app.buttons["סרוק הכול"].waitForExistence(timeout: 5))
+        snap("08-album-confirm")
         app.buttons["ביטול"].firstMatch.tap()
         XCTAssertTrue(app.tabBars.buttons["המוח"].exists)
     }
@@ -115,6 +137,7 @@ final class ScreenMindUITests: XCTestCase {
         app.buttons["השהה"].tap()
         XCTAssertTrue(app.buttons["המשך סריקה"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["העבר לנמחקו לאחרונה"].exists)
+        snap("09-album-paused")
     }
 
     func testCleanupAsksBeforeMovingScreenshotsToRecentlyDeleted() {
@@ -133,6 +156,7 @@ final class ScreenMindUITests: XCTestCase {
         selectJunk.tap()
         app.buttons["מחק את הבחירה מתמונות"].tap()
         XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
+        snap("10-cleanup-confirm")
         app.buttons["להשאיר בתמונות"].tap()
         XCTAssertTrue(app.staticTexts["בלי טקסט"].exists)
     }
@@ -141,8 +165,10 @@ final class ScreenMindUITests: XCTestCase {
         let app = launch(["-UITestReset", "-UITestSpaceOffer"])
         XCTAssertTrue(app.staticTexts["2 צילומים חדשים נשמרו במוח."].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["למחוק אותם כדי לפנות כ־3.4 MB?"].exists)
+        snap("11-space-card")
         app.buttons["מחק מהתמונות"].tap()
         XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
+        snap("12-space-confirm")
         app.buttons["להשאיר בתמונות"].tap()
         app.buttons["השאר"].tap()
         let headline = app.staticTexts["2 צילומים חדשים נשמרו במוח."]
