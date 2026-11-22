@@ -84,4 +84,53 @@ import UIKit
         XCTAssertThrowsError(try vault.save(data: Data("not an image".utf8), name: "../image.png", photoIdentifier: nil, source: "share"))
         XCTAssertTrue(try vault.all().isEmpty)
     }
+    func testStatusBarChromeIsDroppedAndTopStripIsMeasured() {
+        XCTAssertTrue(TextRecognition.isStatusBarChrome("5G"))
+        XCTAssertTrue(TextRecognition.isStatusBarChrome("16:12"))
+        XCTAssertTrue(TextRecognition.isStatusBarChrome("87%"))
+        XCTAssertTrue(TextRecognition.isStatusBarChrome("LTE"))
+        XCTAssertFalse(TextRecognition.isStatusBarChrome("TOPMARK"))
+        XCTAssertFalse(TextRecognition.isStatusBarChrome("חשוב לזכור את המועד"))
+        XCTAssertEqual(
+            TextRecognition.dropStatusBarChrome(["5G", "חשוב לזכור", "16:12", "פרטים נוספים"]),
+            ["חשוב לזכור", "פרטים נוספים"]
+        )
+        XCTAssertEqual(TextRecognition.statusBarCropPixels(imageHeight: 1600), 128)
+        XCTAssertEqual(TextRecognition.statusBarCropPixels(imageHeight: 2532), 203)
+        XCTAssertEqual(TextRecognition.cleanedLines(from: "5G\nשלום עולם\n16:12"), ["שלום עולם"])
+    }
+    func testVisualHebrewIsReversedOnlyWhenFinalFormsSitAtWordStarts() {
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("שלום עולם"), "שלום עולם")
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע םולש"), "שלום עולם")
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("Meeting at 5"), "Meeting at 5")
+    }
+    func testHebrewLineBoxesAreJoinedRightToLeft() {
+        let lines = [
+            OCRLine(text: "שני", boundingBox: CGRect(x: 0.10, y: 0.70, width: 0.20, height: 0.05)),
+            OCRLine(text: "ראשון", boundingBox: CGRect(x: 0.60, y: 0.70, width: 0.25, height: 0.05)),
+            OCRLine(text: "למטה", boundingBox: CGRect(x: 0.20, y: 0.40, width: 0.30, height: 0.05))
+        ]
+        XCTAssertEqual(TextRecognition.orderedLines(lines), ["ראשון שני", "למטה"])
+    }
+    func testAccurateRecognitionStaysOffWithoutAKey() {
+        XCTAssertFalse(AccurateRecognition.isEnabled(environmentKey: nil))
+        XCTAssertFalse(AccurateRecognition.isEnabled(environmentKey: "   "))
+        XCTAssertTrue(AccurateRecognition.isEnabled(environmentKey: "present"))
+        XCTAssertFalse(AccurateRecognition.unavailableMessage.isEmpty)
+    }
+    func testHebrewSampleImageIsReadAndSkipsTheStatusBar() throws {
+        XCTAssertTrue(TextRecognition.hebrewDataAvailable, "heb.traineddata and eng.traineddata must be in the app bundle")
+        let bundle = Bundle(for: ScreenMindTests.self)
+        let url = try XCTUnwrap(bundle.url(forResource: "hebrew-sample", withExtension: "png"))
+        let result = try TextRecognition.recognizeSync(try Data(contentsOf: url))
+        let letters = TextRecognition.hebrewLetters(in: result.text)
+        XCTAssertTrue(letters.contains("שלוםעולם"), result.text)
+        XCTAssertTrue(letters.contains("מהחשובלזכור"), result.text)
+        XCTAssertTrue(letters.contains("תחתית"), result.text)
+        XCTAssertFalse(result.text.contains("TOPMARK"), result.text)
+        XCTAssertFalse(result.text.contains("5G"), result.text)
+        XCTAssertFalse(result.text.contains("16:12"), result.text)
+        XCTAssertFalse(letters.contains("םלועםולש"), result.text)
+        XCTAssertTrue(result.hebrewSupported)
+    }
 }

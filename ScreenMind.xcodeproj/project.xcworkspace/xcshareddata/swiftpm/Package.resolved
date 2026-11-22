@@ -1,0 +1,14 @@
+{
+  "pins": [
+    {
+      "identity": "tesseract-apple",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/lexiaoyao20/tesseract-Apple.git",
+      "state": {
+        "revision": "e5ab1b56b2d479ee2f2fcb86b0b91c1676d17b28",
+        "version": "5.5.2"
+      }
+    }
+  ],
+  "version": 2
+}

@@ -34,11 +34,35 @@ struct CaptureDetail: View {
                             }.frame(maxWidth: .infinity)
                         }.buttonStyle(.plain)
                     } footer: {
-                        Text(capture.textStatus == "complete" ? "הטקסט זוהה במכשיר. כדאי לבדוק שמות, סכומים ותאריכים מול המקור." : "המקור נשמר גם אם לא זוהה טקסט. אפשר להוסיף תיאור ידנית.")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(capture.textStatus == "complete" ? "הטקסט זוהה במכשיר. כדאי לבדוק שמות, סכומים ותאריכים מול המקור." : "המקור נשמר גם אם לא זוהה טקסט. אפשר להוסיף תיאור ידנית.")
+                            if library.hebrewRecognitionSupported == false {
+                                Text("קובצי העברית לזיהוי לא נמצאו באפליקציה, והטקסט עלול להיות חסר.")
+                            }
+                        }
                     }
-                    Section("מה חשוב לזכור") {
+                    Section {
                         TextField("כותרת קצרה", text: $title, axis: .vertical).lineLimit(1...3)
                         TextEditor(text: $text).frame(minHeight: 120).accessibilityLabel("הטקסט והתיאור")
+                        Button("זהה טקסט מחדש") {
+                            Task {
+                                await library.rerecognize(id)
+                                if let updated = library.capture(id) {
+                                    title = updated.title
+                                    text = updated.text
+                                }
+                            }
+                        }
+                        .disabled(library.busy)
+                        if library.busy && !library.progress.isEmpty {
+                            HStack(spacing: 8) { ProgressView(); Text(library.progress).font(.subheadline) }
+                        }
+                        Button("זיהוי מדויק") {}
+                            .disabled(!AccurateRecognition.isEnabled || library.busy)
+                    } header: {
+                        Text("מה חשוב לזכור")
+                    } footer: {
+                        Text(AccurateRecognition.unavailableMessage)
                     }
                     Section("מה רצית לעשות עם זה?") {
                         Picker("כוונה", selection: $intent) { ForEach(SaveIntent.allCases) { value in Text(value.title).tag(value) } }

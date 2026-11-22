@@ -28,6 +28,7 @@ struct ImportReport: Identifiable, Sendable {
     @Published var error: String?
     @Published var report: ImportReport?
     @Published private(set) var backupReceipt: BackupReceipt?
+    @Published private(set) var hebrewRecognitionSupported: Bool?
     private(set) var vault: Vault?
     private let thumbnails = NSCache<NSString, UIImage>()
     var active: [Capture] { captures.filter { !$0.isArchived } }
@@ -39,6 +40,7 @@ struct ImportReport: Identifiable, Sendable {
         thumbnails.totalCostLimit = 32 * 1024 * 1024
         do { vault = try Vault(); refresh() }
         catch { self.error = error.localizedDescription }
+        hebrewRecognitionSupported = TextRecognition.hebrewDataAvailable
     }
     func refresh() {
         guard let vault else { return }
@@ -81,15 +83,31 @@ struct ImportReport: Identifiable, Sendable {
             catch { try? vault.update(capture.id) { $0.textStatus = "failed" } }
         }
     }
-    private func recognize(_ capture: Capture, data: Data) async throws {
+    private func recognize(_ capture: Capture, data: Data, overwrite: Bool = false) async throws {
         guard let vault else { return }
         let result = try await TextRecognition.recognize(data)
+        hebrewRecognitionSupported = result.hebrewSupported
         try vault.update(capture.id) { current in
-            if current.reviewedAt == nil && current.text.isEmpty {
+            let fill = overwrite || (current.reviewedAt == nil && current.text.isEmpty)
+            if fill {
                 current.text = result.text
-                current.title = result.title
+                let placeholder = current.title.isEmpty || current.title == "צילום חדש"
+                if !overwrite || current.reviewedAt == nil || placeholder {
+                    current.title = result.title
+                }
             }
             current.textStatus = result.text.isEmpty ? "noText" : "complete"
+        }
+    }
+    func rerecognize(_ id: String) async {
+        guard !busy, let vault, let capture = captures.first(where: { $0.id == id }) else { return }
+        busy = true
+        progress = "מזהה טקסט מחדש במכשיר…"
+        defer { busy = false; progress = ""; refresh() }
+        do { try await recognize(capture, data: vault.original(capture), overwrite: true) }
+        catch {
+            self.error = error.localizedDescription
+            try? vault.update(id) { $0.textStatus = "failed" }
         }
     }
     func importPicker(_ items: [PhotosPickerItem]) async {
