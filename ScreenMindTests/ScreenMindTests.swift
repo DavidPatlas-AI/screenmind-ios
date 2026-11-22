@@ -107,7 +107,9 @@ import UIKit
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םולש 50"), "50 שלום")
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("50.00 םלוע םולש"), "שלום עולם 50.00")
         XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע Meeting םולש"), "שלום Meeting עולם")
-        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע Meeting Notes םולש"), "שלום Meeting Notes עולם")
+        // Twelve Latin letters need at least as many Hebrew letters before a line is treated as visual Hebrew.
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םלוע Meeting Notes םולש"), "םלוע Meeting Notes םולש")
+        XCTAssertEqual(TextRecognition.normalizePossibleVisualHebrew("םולש םלוע Meeting Notes םולש"), "שלום Meeting Notes עולם שלום")
     }
     func testHebrewLineBoxesAreJoinedRightToLeft() {
         let lines = [
