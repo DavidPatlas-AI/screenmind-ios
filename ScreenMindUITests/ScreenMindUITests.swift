@@ -65,7 +65,8 @@ final class ScreenMindUITests: XCTestCase {
         let reread = app.buttons["זהה טקסט מחדש"]
         XCTAssertTrue(reread.waitForExistence(timeout: 5))
         reread.tap()
-        let finished = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "לא נמצא טקסט", "הזיהוי לא הושלם")).firstMatch
+        let finished = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "לא נמצא טקסט", "הזיהוי לא הושלם", "הטקסט זוהה במכשיר")).firstMatch
+        if !finished.waitForExistence(timeout: 8) { app.swipeDown() }
         XCTAssertTrue(finished.waitForExistence(timeout: 30))
         snap("03-source-reread")
     }
@@ -155,9 +156,11 @@ final class ScreenMindUITests: XCTestCase {
         if !savedHeading.waitForExistence(timeout: 2) { app.swipeUp() }
         XCTAssertTrue(savedHeading.waitForExistence(timeout: 3))
         let selectJunk = app.buttons["בחר את כל מה שבלי טקסט מועיל"]
-        if !selectJunk.isHittable { app.swipeDown() }
-        if !selectJunk.isHittable { app.swipeDown() }
+        XCTAssertTrue(selectJunk.waitForExistence(timeout: 5))
+        if selectJunk.frame.minY < 140 { app.swipeDown() }
         selectJunk.tap()
+        let chosen = app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS %@)", "נבחר", "לא נבחר")).firstMatch
+        XCTAssertTrue(chosen.waitForExistence(timeout: 5))
         app.buttons["מחק את הבחירה מתמונות"].tap()
         XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
         snap("10-cleanup-confirm")
