@@ -10,6 +10,7 @@ struct AlbumCleanupView: View {
     @State private var confirm = false
     @State private var error: String?
     @State private var completed = false
+    @State private var alreadyGone = false
 
     var body: some View {
         NavigationStack {
@@ -18,7 +19,9 @@ struct AlbumCleanupView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(completed ? "הטקסט נשאר כאן." : "אפשר לפנות, בלי לאבד את מה שקראנו.").font(.title3.weight(.semibold))
                         Text(completed
-                             ? "הצילומים שנבחרו עברו ל״נמחקו לאחרונה״ ל־30 יום. אפשר לשחזר אותם משם. ההערות נשארו ב־ScreenMind."
+                             ? (alreadyGone
+                                ? "הצילומים האלה כבר לא היו בתמונות. ההערות נשארו ב־ScreenMind."
+                                : "הצילומים שנבחרו עברו ל״נמחקו לאחרונה״ ל־30 יום. אפשר לשחזר אותם משם. ההערות נשארו ב־ScreenMind.")
                              : "מועדפים ומשימות פתוחות לא מופיעים. כלום לא נמחק לפני האישור שלך, ואפל מבקשת אישור נוסף. אם iCloud Photos פעיל, המחיקה מסתנכרנת.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -56,10 +59,11 @@ struct AlbumCleanupView: View {
                 Button("העבר לנמחקו לאחרונה", role: .destructive) {
                     Task {
                         do {
-                            try await library.deleteSuggested(ids: selected)
+                            alreadyGone = try await library.deleteSuggested(ids: selected) == false
                             completed = true
                             selected = []
                             error = nil
+                            plan = CleanupPlan.build(captures: library.active, fingerprints: library.albumLedger.fingerprints)
                         } catch { self.error = error.localizedDescription }
                     }
                 }

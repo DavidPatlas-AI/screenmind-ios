@@ -443,57 +443,76 @@ extension NativeLibrary {
             spaceOffer = nil
             return
         }
+        let canDelete = prompts.contains { prompt in
+            if let identifier = prompt.photoIdentifier, !identifier.isEmpty { return true }
+            let capture = captures.first { $0.id == prompt.captureID }
+            return !(capture?.photoIdentifier ?? "").isEmpty
+        }
         spaceOffer = SpaceOffer(
             captureIDs: prompts.map(\.captureID),
             estimatedBytes: prompts.reduce(0) { $0 + max($1.estimatedBytes, 0) },
-            count: prompts.count
+            count: prompts.count,
+            canDelete: canDelete
         )
     }
 
     private func importFreshScreenshots(after: Date, advanceCursor: Bool) async {
         guard let vault else { return }
-        let stamps: [PhotoService.ScreenshotStamp]
-        do {
-            stamps = try await Task.detached(priority: .utility) {
-                try PhotoService.recentScreenshots(after: after, limit: 20)
-            }.value
-        } catch { return }
-        let known = Set(captures.compactMap(\.photoIdentifier)).union(albumLedger.processed)
-        let fresh = NewShotPlan.fresh(
-            identifiers: stamps.map(\.identifier),
-            created: stamps.map(\.created),
-            since: after,
-            known: known
-        )
+        var cursorDate = after
         var shares = unidentifiedShareHashes(vault: vault)
-        var blocked: Date?
-        for identifier in fresh {
-            let created = stamps.first { $0.identifier == identifier }?.created
-            let saved = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true, holdForRetry: true)
-            if !saved, let created { blocked = min(blocked ?? created, created) }
-            guard saved, let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
-            let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
-                ?? stamps.first { $0.identifier == identifier }.map {
-                    SpaceEstimate.bytes(fileBytes: nil, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight)
-                } ?? 0
-            SpacePromptStore.enqueue(
-                SpacePrompt(captureID: capture.id, photoIdentifier: identifier, estimatedBytes: bytes, createdAt: Date()),
-                vault: vault
+        // Known shots already saved by a scan must not fill the only page and hide a newer one.
+        for _ in 0..<200 {
+            let stamps: [PhotoService.ScreenshotStamp]
+            let pageAfter = cursorDate
+            do {
+                stamps = try await Task.detached(priority: .utility) {
+                    try PhotoService.recentScreenshots(after: pageAfter, limit: 20)
+                }.value
+            } catch { return }
+            if stamps.isEmpty { break }
+            let known = Set(captures.compactMap(\.photoIdentifier)).union(albumLedger.processed)
+            let fresh = NewShotPlan.fresh(
+                identifiers: stamps.map(\.identifier),
+                created: stamps.map(\.created),
+                since: pageAfter,
+                known: known
             )
-            albumLedger.processed.insert(identifier)
+            var blocked: Date?
+            for identifier in fresh {
+                let created = stamps.first { $0.identifier == identifier }?.created
+                let saved = await ingest(identifier, vault: vault, shares: &shares, createIfUnmatched: true, holdForRetry: true)
+                if !saved, let created { blocked = min(blocked ?? created, created) }
+                guard saved, let capture = captures.first(where: { $0.photoIdentifier == identifier }) else { continue }
+                let bytes = PhotoService.asset(id: identifier).map { PhotoService.estimatedPhotoBytes($0) }
+                    ?? stamps.first { $0.identifier == identifier }.map {
+                        SpaceEstimate.bytes(fileBytes: nil, pixelWidth: $0.pixelWidth, pixelHeight: $0.pixelHeight)
+                    } ?? 0
+                SpacePromptStore.enqueue(
+                    SpacePrompt(captureID: capture.id, photoIdentifier: identifier, estimatedBytes: bytes, createdAt: Date()),
+                    vault: vault
+                )
+                albumLedger.processed.insert(identifier)
+            }
+            guard advanceCursor else { return }
+            var cursor = SpacePromptStore.load(vault)
+            if let blocked {
+                cursor.lastSeenAt = blocked.addingTimeInterval(-1)
+                SpacePromptStore.save(cursor, vault: vault)
+                ScanLedgerStore.save(albumLedger, vault: vault)
+                return
+            }
+            if let next = NewShotPlan.nextSeen(newestIndexed: stamps.map(\.created).max(), previous: cursor.lastSeenAt) {
+                cursor.lastSeenAt = next
+                cursorDate = next
+            }
+            SpacePromptStore.save(cursor, vault: vault)
+            ScanLedgerStore.save(albumLedger, vault: vault)
+            if !fresh.isEmpty || stamps.count < 20 { break }
         }
-        guard advanceCursor else { return }
-        var cursor = SpacePromptStore.load(vault)
-        if let blocked {
-            cursor.lastSeenAt = blocked.addingTimeInterval(-1)
-        } else if let next = NewShotPlan.nextSeen(newestIndexed: stamps.map(\.created).max(), previous: cursor.lastSeenAt) {
-            cursor.lastSeenAt = next
-        }
-        SpacePromptStore.save(cursor, vault: vault)
-        ScanLedgerStore.save(albumLedger, vault: vault)
     }
 
-    func deleteSuggested(ids: Set<String>) async throws {
+    @discardableResult
+    func deleteSuggested(ids: Set<String>) async throws -> Bool {
         guard !busy, !scanLoopActive, let vault, !ids.isEmpty else {
             throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")
         }
@@ -517,9 +536,7 @@ extension NativeLibrary {
         if !deletion.unresolved.isEmpty {
             throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
         }
-        if deletion.present.isEmpty {
-            throw NativeError.message("הצילומים האלה כבר לא בתמונות. ההערות נשארות ב־ScreenMind.")
-        }
+        return !deletion.present.isEmpty
     }
 
     func refreshCleanupSummary() {
@@ -601,13 +618,21 @@ extension NativeLibrary {
                 let otherID = other.photoIdentifier ?? ""
                 if !shareID.isEmpty, !otherID.isEmpty { return shareID == otherID }
                 guard let hash = imageHash(other, vault: vault) else { return false }
-                return ImageFingerprint.hamming(hash, shareHash) <= 2
+                return ImageFingerprint.hamming(hash, shareHash) <= ImageFingerprint.nearDistance
             }
             guard matches.count == 1, let auto = matches.first else { continue }
-            if (share.photoIdentifier ?? "").isEmpty, let photoID = auto.photoIdentifier, !photoID.isEmpty,
-               let stored = try? vault.update(share.id, change: { $0.photoIdentifier = photoID }) {
+            do {
+                let stored = try vault.update(share.id) { current in
+                    if (current.photoIdentifier ?? "").isEmpty, let photoID = auto.photoIdentifier, !photoID.isEmpty {
+                        current.photoIdentifier = photoID
+                    }
+                    if current.text.isEmpty, !auto.text.isEmpty {
+                        current.text = auto.text
+                        current.textStatus = auto.textStatus
+                    }
+                }
                 storeCapture(stored)
-            }
+            } catch { continue }
             if let hash = albumLedger.fingerprints[auto.id] { albumLedger.fingerprints[share.id] = hash }
             albumLedger.fingerprints.removeValue(forKey: auto.id)
             try? vault.delete(id: auto.id)
@@ -684,7 +709,7 @@ extension NativeLibrary {
     private func claimShare(fingerprint: UInt64, created: Date, shares: [(Capture, UInt64)]) -> Capture? {
         let matches = shares.filter { share, hash in
             abs(share.createdAt.timeIntervalSince(created)) <= 180
-                && ImageFingerprint.hamming(hash, fingerprint) <= 2
+                && ImageFingerprint.hamming(hash, fingerprint) <= ImageFingerprint.nearDistance
         }
         guard matches.count == 1 else { return nil }
         return matches[0].0

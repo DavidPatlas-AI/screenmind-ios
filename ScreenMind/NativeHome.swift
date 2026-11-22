@@ -313,7 +313,9 @@ struct SpaceOfferBar: View {
                         Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
                     } else {
                         Button("בדוק") { library.reviewSpaceCaptures = true }.disabled(offer.captureIDs.isEmpty)
-                        Button("מחק מהתמונות") { library.confirmSpaceDeletion = true }
+                        if offer.canDelete {
+                            Button("מחק מהתמונות") { library.confirmSpaceDeletion = true }
+                        }
                     }
                     Button("השאר") { library.declineSpaceOffer() }
                 }
