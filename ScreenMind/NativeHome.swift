@@ -73,31 +73,10 @@ struct NativeHome: View {
         }
     }
 
-    /// The inset stays on the navigation stack, above the tab bar, including after a push.
+    /// The bar sits on each screen inside the stack, so a push keeps it and lists
+    /// can scroll clear. On the `TabView` it would cover the tab bar.
     private func tabPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack {
-            content()
-        }
-        .safeAreaInset(edge: .bottom, spacing: 8) { scanProgress }
-    }
-
-    private var scanProgress: some View {
-        Group {
-            if library.busy && !library.progress.isEmpty {
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(.horizontal, 16)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(library.progress)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.snappy, value: library.busy)
-        .animation(.snappy, value: library.progress)
+        NavigationStack { content().safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() } }
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
@@ -219,5 +198,27 @@ struct CaptureTile: View {
             }.background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18)).clipShape(RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel(capture.title)
             .accessibilityValue(selected ? "נבחר" : capture.needsReview ? "ממתין לסקירה" : capture.collection)
+    }
+}
+
+struct ScanProgressBar: View {
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        Group {
+            if library.busy && !library.progress.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(library.progress).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(library.progress)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: library.busy)
+        .animation(.snappy, value: library.progress)
     }
 }

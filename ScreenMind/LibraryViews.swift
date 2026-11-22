@@ -87,8 +87,11 @@ struct NativeCollectionsView: View {
                         .navigationTitle(collection)
                         .toolbar {
                             ToolbarItem(placement: .bottomBar) {
-                                ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
-                                    Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
+                                VStack(spacing: 8) {
+                                    ScanProgressBar()
+                                    ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
+                                        Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
+                                    }
                                 }
                             }
                         }
