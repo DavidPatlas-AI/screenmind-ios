@@ -535,8 +535,8 @@ extension NativeLibrary {
             && !capture.isArchived {
             guard let data = try? vault.original(capture),
                   let image = UIImage(data: data),
-                  let pixels = ScreenshotPixels.grayscale(image),
-                  let hash = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8) else { continue }
+                  let pixels = ScreenshotPixels.grayscale(image) else { continue }
+            let hash = ImageFingerprint.dHash(pixels: pixels, width: 9, height: 8)
             if ImageFingerprint.hamming(hash, fingerprint) <= ImageFingerprint.nearDistance { return capture }
         }
         return nil
