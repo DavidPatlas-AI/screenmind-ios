@@ -64,6 +64,30 @@ struct CaptureDetail: View {
                     } footer: {
                         Text(AccurateRecognition.unavailableMessage)
                     }
+                    let insights = CaptureInsights.detect(title: capture.title, text: capture.text)
+                    let sequence = CaptureSequences.sequence(containing: capture.id, in: library.captures)
+                    if !insights.isEmpty || !sequence.isEmpty {
+                        Section("שים לב") {
+                            ForEach(insights, id: \.self) { insight in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label(insight.title, systemImage: insight.symbol).font(.subheadline.weight(.semibold))
+                                    Text(insight.detail).font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
+                            if !sequence.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label("חלק מרצף של \(sequence.count) צילומים", systemImage: "square.stack.3d.down.right")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("כנראה מאותו סרטון או שרשור. לפי סדר הצילום:").font(.footnote).foregroundStyle(.secondary)
+                                    ForEach(Array(sequence.enumerated()), id: \.element.id) { index, item in
+                                        Text("\(index + 1). \(item.title.isEmpty ? "צילום" : item.title)")
+                                            .font(.footnote)
+                                            .fontWeight(item.id == capture.id ? .bold : .regular)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Section("מה רצית לעשות עם זה?") {
                         Picker("כוונה", selection: $intent) { ForEach(SaveIntent.allCases) { value in Text(value.title).tag(value) } }
                         TextField("שם מרחב, למשל הטיול הבא", text: $collection)

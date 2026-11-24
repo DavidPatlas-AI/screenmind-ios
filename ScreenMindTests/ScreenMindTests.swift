@@ -422,4 +422,28 @@ import UIKit
         capture.reviewedAt = reviewed
         return capture
     }
+    func testInsightsFlagTimeSensitiveAndUnverifiedClaims() {
+        XCTAssertEqual(CaptureInsights.detect(title: "חופשה", text: "יתרת חופשה 12.5 ימים"), [.timeSensitive])
+        XCTAssertEqual(CaptureInsights.detect(title: "אירוע", text: "פתיחת שערים 19:30, 8.12"), [.timeSensitive])
+        XCTAssertTrue(CaptureInsights.detect(title: "GrokBot", text: "רווח של $5000 בלילה אחד, קריפטו").contains(.unverifiedClaim))
+        XCTAssertEqual(CaptureInsights.detect(title: "מתכון", text: "קמח, ביצים וסוכר"), [])
+        XCTAssertEqual(CaptureInsights.detect(title: "", text: "  "), [])
+    }
+    func testSequencesGroupFramesOfOneVideoInCaptureOrder() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func make(_ id: String, _ minutes: Double, _ text: String) -> Capture {
+            Capture(id: id, originalName: id + ".png", createdAt: start.addingTimeInterval(minutes * 60), title: "אבטחה", text: text, source: "test")
+        }
+        let frames = [
+            make("c", 2, "אבטחת אפליקציות שרת הרשאות"),
+            make("a", 0, "אבטחת אפליקציות מפתחות סודיים"),
+            make("b", 1, "אבטחת אפליקציות קובץ סביבה"),
+            make("far", 120, "אבטחת אפליקציות שרת הרשאות"),
+            make("other", 3, "מתכון עוגת שוקולד")
+        ]
+        let groups = CaptureSequences.sequences(in: frames)
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups.first?.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(CaptureSequences.sequence(containing: "far", in: frames).count, 0)
+    }
 }

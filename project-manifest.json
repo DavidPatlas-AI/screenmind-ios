@@ -25,6 +25,7 @@
     "ScreenMind/CleanupView.swift",
     "ScreenMind/IdeasBrain.swift",
     "ScreenMind/IdeasBrainView.swift",
+    "ScreenMind/CaptureInsights.swift",
     "ScreenMind/UITestLaunch.swift"
   ],
   "shareFiles": [
