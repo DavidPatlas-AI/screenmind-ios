@@ -14,8 +14,10 @@
 
 - Intelligence branch: private source-linked search using Apple's on-device Natural Language sentence embeddings when the language model is available. Searches all active records lexically and up to 250 recent records semantically, ranks exact matches first, and shows the search method. No cloud account, API key, or external data transfer. Hebrew and other languages without a suitable local model use the lexical fallback; no translation or generative answers. Added deterministic tests for relevance and vector similarity.
 
+- AI branch: optional private server for OpenAI Responses structured output, text-only previews of up to 12 sources, 12 output-language options, explicit consent and batch acceptance. AI title, summary, topic, and suggested task are kept separately from OCR and user corrections. Source digest prevents stale analysis. Gateway is not deployed; no live provider call performed. See ai-gateway/README.md for security and setup.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
-- Genuine multilingual semantic AI, broader project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
+- Deployment and live testing of the optional generative gateway, broader multilingual semantic AI and project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
 - No automatic deletion. Album scan currently stores reduced images, not always originals. Do not delete important originals without verified full-size backup.
 - Preserve manual edits and ensure backward-compatible migration. No provider credentials embedded, no sending private captures without opt-in.
