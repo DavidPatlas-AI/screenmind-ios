@@ -70,7 +70,7 @@ enum CaptureSequences {
     // words with the previous one, form one sequence (one reel, one thread).
     static func sequences(in captures: [Capture]) -> [[Capture]] {
         let active = captures.filter { !$0.isArchived }.sorted { lhs, rhs in
-            lhs.createdAt != rhs.createdAt ? lhs.createdAt < rhs.createdAt : lhs.id < rhs.id
+            lhs.sourceDate != rhs.sourceDate ? lhs.sourceDate < rhs.sourceDate : lhs.id < rhs.id
         }
         var groups: [[Capture]] = []
         var current: [Capture] = []
@@ -78,7 +78,7 @@ enum CaptureSequences {
         for capture in active {
             let tokens = Set(BrainText.tokens(title: capture.title, text: capture.text))
             if let last = current.last,
-               capture.createdAt.timeIntervalSince(last.createdAt) <= window,
+               capture.sourceDate.timeIntervalSince(last.sourceDate) <= window,
                tokens.intersection(previousTokens).count >= 2 {
                 current.append(capture)
             } else {
