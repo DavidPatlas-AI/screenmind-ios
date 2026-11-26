@@ -298,6 +298,33 @@ struct ImportReport: Identifiable, Sendable {
             }
         } catch { self.error = error.localizedDescription }
     }
+    func exportLibraryBackup(to folder: URL) async throws -> LibraryBackup.ExportResult {
+        guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
+            throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
+        }
+        busy = true
+        progress = "מגבה את הספרייה בחלקים…"
+        defer { busy = false; progress = "" }
+        return try await Task.detached(priority: .userInitiated) {
+            let access = folder.startAccessingSecurityScopedResource()
+            defer { if access { folder.stopAccessingSecurityScopedResource() } }
+            return try LibraryBackup.export(vault: vault,to: folder)
+        }.value
+    }
+    func restoreLibraryBackup(from folder: URL) async throws -> LibraryBackup.RestoreResult {
+        guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
+            throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
+        }
+        busy = true
+        progress = "מאמת ומשחזר את הספרייה בחלקים…"
+        backupReceipt = nil
+        defer { busy = false; progress = ""; refresh(); refreshCleanupSummary() }
+        return try await Task.detached(priority: .userInitiated) {
+            let access = folder.startAccessingSecurityScopedResource()
+            defer { if access { folder.stopAccessingSecurityScopedResource() } }
+            return try LibraryBackup.restore(folder,to: vault)
+        }.value
+    }
     func restoreBackup(_ verified: VerifiedBackup) async throws -> VerifiedBackup.RestoreReport {
         guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
             throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
