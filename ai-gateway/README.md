@@ -6,6 +6,13 @@ Provider is disabled by default. No cloud account, SDK or live API call is neede
 `node --test ai-gateway/bedrock.test.mjs`
 `node --check ai-gateway/server.mjs`
 
+## Persistent pilot guard (required for any live provider)
+Use a private persistent local directory owned by the gateway operator, outside the repository, with permissions 0700. Set SCREENMIND_PILOT_LEDGER to an absolute path in that directory. Initialize once with a deliberately small approved invocation ceiling (for example 20):
+```sh
+node --input-type=module -e 'import {initializePilotLedger} from "./ai-gateway/pilot-guard.mjs"; initializePilotLedger(process.argv[1],Number(process.argv[2]))' /absolute/private/pilot.json 20
+```
+The file must not already exist. Every provider attempt reserves one invocation durably before inference; failures count. Missing/corrupt/locked ledger stops requests. The limit persists across normal restarts and does not reset automatically. Never delete or recreate the ledger to bypass an agreed limit. If a crash leaves a lock, investigate before recovering it. This is a single-host pilot control, not a guaranteed dollar cap, distributed quota, or tamper-proof billing record. Keep AWS Budgets alerts and IAM restrictions as additional safeguards. Do not use ephemeral filesystem storage.
+
 ## Optional Bedrock pilot (not deployed)
 Review AWS eligibility, model availability, pricing, region, inference logging/data retention and credentials first. Choose a directly invocable model in the approved region that supports Converse structured JSON output, system prompts, and the configured inference parameters. Install a reviewed version of `@aws-sdk/client-bedrock-runtime` in the gateway environment; the mock tests do not install it. Pin the dependency and lockfile before deployment.
 
