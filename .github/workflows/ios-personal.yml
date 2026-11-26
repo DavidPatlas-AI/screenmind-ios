@@ -13,6 +13,7 @@ on:
       - screenmind-v2-stories
       - screenmind-v2-bedrock
       - screenmind-v2-pilot-guard
+      - screenmind-v2-backup-check
 permissions:
   contents: read
 concurrency:
