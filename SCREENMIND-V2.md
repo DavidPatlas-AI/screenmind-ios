@@ -8,6 +8,8 @@
 - Original photo dates are recorded separately from import dates; accessible existing photos can recover their dates.
 - Added unit tests and adjusted existing graph and cleanup tests.
 
+- Second pass: bounded topic cache; single-pass collection grouping; color-coded topic cards; automatic navigation to topics on completed scan; optional review secondary to finishing import. Tests added for cache and topic navigation.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Genuine multilingual semantic AI, project inference, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
