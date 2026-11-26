@@ -228,6 +228,47 @@ import UIKit
         XCTAssertNil(capture.currentAIAnalysis)
         XCTAssertEqual(capture.smartTopic, .technology)
     }
+    func testRediscoveryRequiresRealPhotoDatesAndSharedProjectEvidence() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let older = now.addingTimeInterval(-90 * 86400)
+        let recent = now.addingTimeInterval(-5 * 86400)
+        var original = idea("old", title: "First plan", text: "github.com/example/project", at: now)
+        original.photoCreatedAt = older
+        var updated = idea("new", title: "New plan", text: "github.com/example/project", at: now)
+        updated.photoCreatedAt = recent
+        var imported = idea("imported", title: "Uncertain", text: "github.com/example/project", at: older)
+        imported.photoCreatedAt = nil
+        var archived = idea("archived", title: "Hidden", text: "github.com/example/project", at: now)
+        archived.photoCreatedAt = now
+        archived.isArchived = true
+        let suggestions = MemoryDiscovery.build(from: [original, updated, imported, archived], now: now)
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions.first?.kind, .project)
+        XCTAssertEqual(suggestions.first?.sourceIDs, ["old", "new"])
+        XCTAssertTrue(MemoryDiscovery.build(from: [original, imported], now: now).isEmpty)
+    }
+    func testRediscoveryDoesNotInventTasksOrExposeArchivedFavorites() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let old = now.addingTimeInterval(-90 * 86400)
+        var favorite = idea("favorite", title: "Saved manual", text: "reference", at: now)
+        favorite.photoCreatedAt = old
+        favorite.isFavorite = true
+        var seen = favorite
+        seen.id = "seen"
+        seen.viewedAt = now
+        var archived = favorite
+        archived.id = "archived"
+        archived.isArchived = true
+        let approved = idea("due", title: "Approved", text: "reference", intent: .act, task: "Check document", due: old, at: now)
+        let draft = idea("draft", title: "Draft", text: "reference", intent: .act, task: "Not approved", due: old, reviewed: nil, at: now)
+        var completed = approved
+        completed.id = "completed"
+        completed.taskCompletedAt = now
+        let result = MemoryDiscovery.build(from: [favorite, seen, archived, approved, draft, completed], now: now)
+        XCTAssertEqual(Set(result.flatMap(\.sourceIDs)), Set(["favorite", "due"]))
+        XCTAssertEqual(result.first?.kind, .dueTask)
+    }
+
     func testLexicalRetrievalQualityAtLibraryScale() {
         // Synthetic OCR only: no user's private screenshots, no network.
         let old = Date(timeIntervalSince1970: 1_600_000_000)
