@@ -39,10 +39,10 @@ struct IdeasBrainView: View {
 
     private func header(_ focus: BrainNode?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(focus?.kind == .topic ? (focus?.title ?? "המוח") : "למה זה נשמר").font(.title2.bold())
+            Text(focus?.kind == .topic ? (focus?.title ?? "המוח") : "מפת הידע").font(.title2.bold())
             Text(focus?.kind == .topic
                  ? "הקש על מקור כדי לפתוח אותו. נושא מחובר נפתח באותו מקום."
-                 : "נושאים לפי המרחב שבחרת, הכוונה, ומילים שחזרו בטקסט. הכול במכשיר.")
+                 : "נושאים מוצעים אוטומטית. הקש על נושא כדי לגלות את המקורות שלו.")
                 .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if focusID != BrainGraph.rootID {
                 Button { self.focus(BrainGraph.rootID) } label: { Label("כל המוח", systemImage: "brain.head.profile") }
@@ -82,7 +82,7 @@ struct IdeasBrainView: View {
             ContentUnavailableView {
                 Label("המוח מתמלא מצילומים.", systemImage: "brain.head.profile")
             } description: {
-                Text("אחרי סריקה או שמירה, צילומים מתקבצים לנושאים לפי המרחב, הכוונה ומילות המפתח. הכול נשאר במכשיר.")
+                Text("אחרי הסריקה, הצילומים מופיעים בנושאים אוטומטיים. הכול נשאר במכשיר.")
             }
             Button(action: onScanAll) {
                 Label("סרוק את כל צילומי המסך", systemImage: "photo.stack")
