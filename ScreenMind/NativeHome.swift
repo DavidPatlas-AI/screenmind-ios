@@ -202,6 +202,22 @@ struct NativeHome: View {
                                 .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
                         }.buttonStyle(.plain)
                         NavigationLink {
+                            MemoryDiscoveryView(open: { selected = $0 })
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "clock.arrow.circlepath").font(.title2)
+                                    .foregroundStyle(NativeTheme.accent)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("גלה מחדש").font(.headline)
+                                    Text("קשרים ישנים וחדשים, עם המקורות").font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.backward").font(.caption)
+                            }.padding(14)
+                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                        }.buttonStyle(.plain)
+                        NavigationLink {
                             AIEnrichmentView()
                         } label: {
                             Label("ניתוח תוכן מתקדם ב־AI (רשות)", systemImage: "sparkles")
