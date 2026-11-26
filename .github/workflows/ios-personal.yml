@@ -12,6 +12,7 @@ on:
       - screenmind-v2-rediscovery
       - screenmind-v2-stories
       - screenmind-v2-bedrock
+      - screenmind-v2-pilot-guard
 permissions:
   contents: read
 concurrency:
@@ -28,7 +29,7 @@ jobs:
       - name: Check AI gateway JavaScript syntax
         run: |
           node --check ai-gateway/server.mjs
-          node --test ai-gateway/bedrock.test.mjs
+          node --test ai-gateway/bedrock.test.mjs ai-gateway/pilot-guard.test.mjs
       - name: Generate standalone personal edition
         run: SCREENMIND_PERSONAL=1 node scripts/generate-project.mjs
       - name: Test personal edition on simulator
