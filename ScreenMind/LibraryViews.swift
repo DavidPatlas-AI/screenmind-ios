@@ -15,8 +15,8 @@ struct NativeLibraryView: View {
         return library.captures.filter { capture in
             let stateMatches = filter == "archive" ? capture.isArchived : !capture.isArchived
             let favoriteMatches = filter != "favorite" || capture.isFavorite
-            let collectionMatches = collection == nil || capture.collection == collection
-            let searchable = [capture.title, capture.text, capture.collection, capture.intent.title].joined(separator: " ").lowercased()
+            let collectionMatches = collection == nil || capture.effectiveCollection == collection
+            let searchable = [capture.displayTitle, capture.title, capture.text, capture.effectiveCollection, capture.intent.title].joined(separator: " ").lowercased()
             return stateMatches && favoriteMatches && collectionMatches && tokens.allSatisfy { searchable.contains($0) }
         }
     }
@@ -88,13 +88,12 @@ struct NativeCollectionsView: View {
         List {
             if library.collections.isEmpty {
                 ContentUnavailableView("כל רעיון יכול לקבל מקום.", systemImage: "folder",
-                                       description: Text("פתח צילום, ערוך את שם המרחב ושמור. כל המקורות עם אותו שם יופיעו יחד."))
+                                       description: Text("סרוק צילומים והנושאים יופיעו כאן אוטומטית. אפשר לשנות שיוך בפרטי מקור."))
             }
             ForEach(library.collections, id: \.self) { collection in
                 NavigationLink {
                     NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
                         .navigationTitle(collection)
-                        .safeAreaInset(edge: .top, spacing: 0) { SpaceOfferBar() }
                         .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
                         .toolbar {
                             ToolbarItem(placement: .bottomBar) {
@@ -108,14 +107,14 @@ struct NativeCollectionsView: View {
                         Image(systemName: "folder").font(.title2).foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 5) {
                             Text(collection).font(.headline)
-                            Text("\(library.active.filter { $0.collection == collection }.count) מקורות")
+                            Text("\(library.active.filter { $0.effectiveCollection == collection }.count) מקורות")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }.padding(.vertical, 8)
                     }
                 }
             }
             Section {
-                Text("מרחב מחבר מקורות שבחרת לשייך יחד. לשונית המוח מקבצת גם לפי מילות המפתח והכוונה, במכשיר ובלי ענן.")
+                Text("הנושאים מוצעים אוטומטית לפי הטקסט המזוהה. שיוך שבחרת תמיד נשמר. זהו מיון מקומי בסיסי, לא מודל AI.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }.sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
