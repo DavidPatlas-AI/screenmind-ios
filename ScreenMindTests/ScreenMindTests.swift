@@ -210,6 +210,19 @@ import UIKit
         XCTAssertEqual(ProjectIdentity.detect(in: "github.com/features/copilot").count, 0)
         XCTAssertEqual(ProjectIdentity.detect(in: "evilgithub.com/example/my-app").count, 0)
     }
+    func testMemorySearchRanksRelevantWordsAndRejectsUnrelatedSources() {
+        let now = Date()
+        let capture = idea("code", title: "מדריך GitHub", text: "SwiftUI פיתוח אפליקציה", at: now)
+        let unrelated = idea("food", title: "מתכון", text: "אורז וירקות", at: now)
+        let hit = MemorySearchEngine.lexical(query: "איפה שמרתי את המדריך GitHub", capture: capture)
+        // Hebrew prefixes are not stemmed by the deterministic fallback.
+        XCTAssertNotNil(hit)
+        XCTAssertNil(MemorySearchEngine.lexical(query: "GitHub SwiftUI", capture: unrelated))
+        XCTAssertEqual(MemorySearchEngine.lexical(query: "GitHub SwiftUI", capture: capture)?.match, .exact)
+        XCTAssertEqual(MemorySearchEngine.cosine([1, 0], [1, 0]), 1)
+        XCTAssertEqual(MemorySearchEngine.cosine([1, 0], [0, 1]), 0)
+        XCTAssertNil(MemorySearchEngine.cosine([0, 0], [1, 0]))
+    }
     func testSmartTopicCacheRespectsEdits() {
         XCTAssertEqual(SmartTopic.classify(title: "same", text: "GitHub SwiftUI"), .technology)
         XCTAssertEqual(SmartTopic.classify(title: "same", text: "invoice payment"), .finance)
