@@ -1,3 +1,23 @@
+# ScreenMind AI gateway — experimental private server
+
+Provider is disabled by default. No cloud account, SDK or live API call is needed for the offline transport tests.
+
+## Offline verification
+`node --test ai-gateway/bedrock.test.mjs`
+`node --check ai-gateway/server.mjs`
+
+## Optional Bedrock pilot (not deployed)
+Review AWS eligibility, model availability, pricing, region, inference logging/data retention and credentials first. Choose a directly invocable model in the approved region that supports Converse structured JSON output, system prompts, and the configured inference parameters. Install a reviewed version of `@aws-sdk/client-bedrock-runtime` in the gateway environment; the mock tests do not install it. Pin the dependency and lockfile before deployment.
+
+Set server-only `SCREENMIND_PROVIDER=bedrock`, `SCREENMIND_ALLOW_LIVE_AI=yes`, `AWS_REGION`, `BEDROCK_MODEL_ID` and a cryptographically random `SCREENMIND_GATEWAY_TOKEN` of at least 32 characters. Use short-lived credentials or a dedicated IAM role limited to the selected model's InvokeModel permission. Never put AWS credentials into iOS, GitHub or chat. Do not enable request/response content logging. Check credit eligibility and billing separately.
+
+OpenAI remains available only when `SCREENMIND_PROVIDER=openai` and `SCREENMIND_ALLOW_LIVE_AI=yes` are explicitly set, with server-side `OPENAI_API_KEY`.
+
+The server binds to loopback; a private trusted HTTPS reverse proxy is needed. No automatic provider fallback, no tool execution, no upload of screenshot images. Only the previewed text fields are forwarded, at most 12 items/128 KiB per batch, max 4000 output tokens, 55-second timeout, one concurrent request and 20 requests per rolling hour. Limits are in-memory and reset on restart; these are not a billing cap or multi-tenant production authentication. Bedrock first-time schema compilation may exceed the timeout. No retry is performed; model/region compatibility and a synthetic live smoke test remain required.
+
+Official API: https://docs.aws.amazon.com/bedrock/latest/userguide/structured-output.html
+
+## Previous gateway notes (historical; new explicit opt-in above supersedes startup commands)
 # ScreenMind private AI gateway (experimental)
 
 The iOS app works locally by default. This optional single-user gateway enables real generative text analysis on older iPhones without embedding an OpenAI API key in the IPA.
