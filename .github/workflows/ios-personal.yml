@@ -8,6 +8,7 @@ on:
       - screenmind-v2-intelligence
       - screenmind-v2-ai
       - screenmind-v2-release-safety
+      - screenmind-v2-quality
 permissions:
   contents: read
 concurrency:
