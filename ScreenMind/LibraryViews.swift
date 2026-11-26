@@ -165,7 +165,7 @@ struct NativeCollectionsView: View {
                         }.buttonStyle(.plain)
                     }
                 }
-                Text("המיון מקומי ומבוסס על הטקסט המזוהה. אפשר לתקן שיוך בפרטי מקור בכל עת.")
+                Text("המיון מבוסס על טקסט מזוהה או ניתוח AI שאישרת. אפשר לתקן שיוך בפרטי מקור בכל עת.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(18)
         }.background(NativeTheme.canvas)
@@ -201,7 +201,7 @@ struct NativeSettingsView: View {
                 #endif
                 Section("המרחב שלך") {
                     Label("מקורות וטקסט נשמרים מקומית", systemImage: "externaldrive")
-                    Label("ללא חשבון וללא ספק AI חיצוני", systemImage: "lock.shield")
+                    Label("מיון מקומי כברירת מחדל; AI חיצוני רק בהסכמה", systemImage: "lock.shield")
                     Text("עברית ואנגלית מזוהות במכשיר עם Tesseract. כשאין עברית בתמונה, הזיהוי יכול להשתמש ב־Vision. שורת המצב לא נכנסת לטקסט. אפשר לתקן הכול.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
