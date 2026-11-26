@@ -668,7 +668,7 @@ extension NativeLibrary {
             guard let encoded else { throw NativeError.message("לא הצלחתי להקטין את הצילום.") }
             if let fingerprint, let created = asset.creationDate,
                let claimed = claimShare(fingerprint: fingerprint, created: created, shares: shares) {
-                let stored = try vault.update(claimed.id) { $0.photoIdentifier = identifier }
+                let stored = try vault.update(claimed.id) { $0.photoIdentifier = identifier; $0.photoCreatedAt = asset.creationDate }
                 albumLedger.fingerprints[stored.id] = fingerprint
                 storeCapture(stored)
                 albumLedger.processed.insert(identifier)
@@ -677,7 +677,7 @@ extension NativeLibrary {
                 return true
             }
             guard createIfUnmatched else { return false }
-            let capture = try vault.save(data: encoded, name: "screenshot.jpg", photoIdentifier: identifier, source: "album")
+            let capture = try vault.save(data: encoded, name: "screenshot.jpg", photoIdentifier: identifier, source: "album", photoCreationDate: asset.creationDate)
             if let fingerprint { albumLedger.fingerprints[capture.id] = fingerprint }
             var stored = capture
             if capture.textStatus == "pending" {
