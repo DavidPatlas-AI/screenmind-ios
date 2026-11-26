@@ -43,7 +43,7 @@ struct NativeHome: View {
         .sheet(isPresented: $settings) { NativeSettingsView() }
         .sheet(isPresented: $albumCleanup) { AlbumCleanupView() }
         .onChange(of: library.albumScan.finishedToken) { _, token in
-            if token > 0 { tab = 2 }
+            if token > 0 { tab = 3 }
         }
         .sheet(item: $library.report, onDismiss: {
             if reviewAfterImport { reviewAfterImport = false; review = true }
@@ -63,9 +63,9 @@ struct NativeHome: View {
                             reviewIDs = report.reviewIDs
                             reviewAfterImport = true
                             library.report = nil
-                        }.buttonStyle(.borderedProminent).controlSize(.large)
+                        }.buttonStyle(.bordered).controlSize(.large)
                     }
-                    Button("סיום") { library.report = nil }.controlSize(.large)
+                    Button("סיום") { library.report = nil }.buttonStyle(.borderedProminent).controlSize(.large)
                 }.padding(28).navigationTitle("נשמר, לא נמחק").navigationBarTitleDisplayMode(.inline)
             }.presentationDetents([.medium, .large])
         }
@@ -220,7 +220,7 @@ struct NativeHome: View {
                             Image(systemName: "brain.head.profile").font(.title2)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("המוח של הרעיונות").font(.headline)
-                                Text("נושאים וקשרים ממה שזיהינו ומהכוונה שלך").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                                Text("פתח את מפת הנושאים והקשרים").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                             }
                             Spacer()
                             Image(systemName: "chevron.backward")
