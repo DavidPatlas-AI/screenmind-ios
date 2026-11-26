@@ -228,6 +228,61 @@ import UIKit
         XCTAssertNil(capture.currentAIAnalysis)
         XCTAssertEqual(capture.smartTopic, .technology)
     }
+    func testLexicalRetrievalQualityAtLibraryScale() {
+        // Synthetic OCR only: no user's private screenshots, no network.
+        let old = Date(timeIntervalSince1970: 1_600_000_000)
+        let samples: [(String, String, String, String)] = [
+            ("mortgage", "Mortgage approval", "Home loan reference 2831", "איפה שמרתי את המשכנתה"),
+            ("recipe", "Рецепт", "Картофель и зелень", "מתכון"),
+            ("course", "קורס מכונאות", "שיעורים ומנועים", "course"),
+            ("truck", "Truck maintenance", "Hydraulic inspection", "משאית"),
+            ("invoice", "חשבונית ספק", "פריט 4908", "invoice"),
+            ("drone", "Дрон", "Обзор камер и управления", "רחפן"),
+            ("backup", "Backup policy", "Archive checksums", "גיבוי"),
+            ("hotel", "Hôtel", "Réservation à Lyon", "מלון"),
+            ("budget", "Budget estimate", "Materials and labor", "תקציב"),
+            ("scholarship", "Стипендия", "Условия поступления", "מלגה"),
+            ("contract", "חוזה ספק", "סעיף 12", "contract"),
+            ("code", "SwiftUI GitHub", "View architecture", "המדריך GitHub SwiftUI")
+        ]
+        let relevant = samples.map { idea($0.0, title: $0.1, text: $0.2, at: old) }
+        var archived = idea("archived", title: "Mortgage approval", text: "Home loan", at: old)
+        archived.isArchived = true
+        let distractorTexts = ["audio add menu settings", "weather clouds sunset", "green pencil paper", "keyboard mouse display", "street tree window"]
+        for size in [100, 200, 3000, 10000] {
+            let distractors = (0..<(size - relevant.count - 1)).map { i in
+                idea("noise-\(i)", title: "record \(i)", text: distractorTexts[i % distractorTexts.count],
+                     at: old.addingTimeInterval(Double(i + 1)))
+            }
+            let start = Date()
+            let index = MemoryLexicalIndex(captures: relevant + [archived] + distractors)
+            let buildSeconds = Date().timeIntervalSince(start)
+            let queryStart = Date()
+            var top1 = 0, top5 = 0
+            for (id, _, _, query) in samples {
+                let hits = index.search(query, limit: 5)
+                if hits.first?.id == id { top1 += 1 }
+                if hits.contains(where: { $0.id == id }) { top5 += 1 }
+                XCTAssertFalse(hits.contains(where: { $0.id == "archived" }))
+            }
+            let querySeconds = Date().timeIntervalSince(queryStart)
+            print("MEMORY_BENCHMARK n=\(size) top1=\(top1)/\(samples.count) recallAt5=\(top5)/\(samples.count) indexSeconds=\(buildSeconds) querySeconds=\(querySeconds)")
+            XCTAssertGreaterThanOrEqual(top5, 11)
+            XCTAssertGreaterThanOrEqual(top1, 10)
+            XCTAssertTrue(index.search("unfindablexyz").isEmpty)
+            XCTAssertTrue(index.search("איפה שמרתי את").isEmpty)
+        }
+    }
+    func testLexicalIndexUsesRareSpecificTermsAndRejectsCategoryOnlyMatches() {
+        let now = Date()
+        let specific = idea("specific", title: "Orion hydraulic repair", text: "truck pump", at: now)
+        let generic = idea("generic", title: "Hydraulic repair", text: "general equipment", at: now)
+        let category = idea("category", title: "unrelated", text: "wood", collection: "משאית", at: now)
+        let index = MemoryLexicalIndex(captures: [generic, category, specific])
+        XCTAssertEqual(index.search("Orion hydraulic").first?.id, "specific")
+        XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
+        XCTAssertEqual(index.search("משאית").first?.match, .related)
+    }
     func testMemorySearchRanksRelevantWordsAndRejectsUnrelatedSources() {
         let now = Date()
         let capture = idea("code", title: "מדריך GitHub", text: "SwiftUI פיתוח אפליקציה", at: now)
