@@ -228,6 +228,52 @@ import UIKit
         XCTAssertNil(capture.currentAIAnalysis)
         XCTAssertEqual(capture.smartTopic, .technology)
     }
+    func testStoryKeepsChronologyAndDoesNotInventTasks() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let earlier = now.addingTimeInterval(-60 * 86400)
+        var first = idea("first", title: "תכנון ראשון", text: "מקור ראשון", at: now)
+        first.photoCreatedAt = earlier
+        var second = idea("second", title: "שינוי", text: "מקור שני", intent: .act, task: "בדוק את המודל", at: earlier)
+        second.photoCreatedAt = now
+        let uncertain = idea("unknown", title: "תאריך לא ידוע", text: "תיעוד", intent: .act, task: "טיוטה לא מאושרת", reviewed: nil, at: earlier)
+        var archived = first
+        archived.id = "archived"
+        archived.isArchived = true
+        let story = StoryDraft.build(title: "פרויקט", captures: [second, uncertain, first, archived, first])
+        XCTAssertEqual(story.entries.map(\.id), ["first", "second", "unknown"])
+        XCTAssertEqual(story.known.map(\.id), ["first", "second"])
+        XCTAssertEqual(story.unknown.map(\.id), ["unknown"])
+        XCTAssertEqual(story.tasks.map(\.id), ["second"])
+        XCTAssertEqual(story.total, 3)
+        XCTAssertTrue(story.html().contains("תאריך צילום לא ידוע"))
+        XCTAssertTrue(story.html().contains("בדוק את המודל"))
+        XCTAssertFalse(story.html().contains("טיוטה לא מאושרת"))
+        XCTAssertFalse(story.html(includeTasks: false).contains("בדוק את המודל"))
+    }
+    func testStoryHTMLEscapesUntrustedTextAndDisclosesOmissions() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let sources = (0..<50).map { n -> Capture in
+            var item = idea("story-\(n)", title: "פרק \(n)", text: "<script>alert('x')</script> & text",
+                            at: now)
+            item.photoCreatedAt = now.addingTimeInterval(Double(n))
+            return item
+        }
+        let draft = StoryDraft.build(title: "<img src=evil>", captures: sources)
+        XCTAssertEqual(draft.entries.count, 40)
+        XCTAssertEqual(draft.omitted, 10)
+        XCTAssertEqual(draft.entries.first?.id, "story-0")
+        XCTAssertEqual(draft.entries.last?.id, "story-49")
+        XCTAssertTrue(draft.introduction.contains("10"))
+        let html = draft.html()
+        XCTAssertTrue(html.contains("&lt;script&gt;"))
+        XCTAssertTrue(html.contains("&amp; text"))
+        XCTAssertTrue(html.contains("&lt;img src=evil&gt;"))
+        XCTAssertFalse(html.contains("<script>"))
+        XCTAssertFalse(html.contains("<img src=evil>"))
+        XCTAssertTrue(html.contains("default-src 'none'"))
+        XCTAssertTrue(html.contains("source-40"))
+    }
+
     func testRediscoveryRequiresRealPhotoDatesAndSharedProjectEvidence() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let older = now.addingTimeInterval(-90 * 86400)
