@@ -5,6 +5,7 @@ import Foundation
 struct VerifiedBackup: Sendable {
     let captures: [Capture]
     let sourceBytes: Int
+    private let sources: [String: Data]
 
     static let maxArchive = 40 * 1024 * 1024
     static let maxSources = 20
@@ -79,6 +80,7 @@ struct VerifiedBackup: Sendable {
               !captures.isEmpty, captures.count <= maxSources,
               captures.count+2 == entries.count else { throw invalid() }
         var ids = Set<String>()
+        var sources: [String: Data] = [:]
         for capture in captures {
             guard capture.id.utf8.count == 64,
                   capture.id.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
@@ -88,8 +90,31 @@ struct VerifiedBackup: Sendable {
                   !capture.originalName.contains("\0"),
                   let bytes = files["sources/"+capture.id+"-"+capture.originalName],
                   Vault.hash(bytes) == capture.id else { throw invalid() }
+            sources[capture.id] = bytes
         }
-        return VerifiedBackup(captures:captures,sourceBytes:total)
+        return VerifiedBackup(captures:captures,sourceBytes:total,sources:sources)
+    }
+
+    struct RestoreReport: Sendable {
+        var inserted = 0
+        var skipped = 0
+        var failed = 0
+    }
+    func restoreNew(to vault: Vault) throws -> RestoreReport {
+        // Preflight every source before making any changes.
+        for capture in captures {
+            guard let bytes = sources[capture.id] else { throw Self.invalid() }
+            try Vault.validateSourceImage(bytes)
+        }
+        var report = RestoreReport()
+        for capture in captures {
+            guard let bytes = sources[capture.id] else { throw Self.invalid() }
+            do {
+                if try vault.restoreNewCapture(capture, data: bytes) { report.inserted += 1 }
+                else { report.skipped += 1 }
+            } catch { report.failed += 1 }
+        }
+        return report
     }
 
     struct Comparison: Sendable {
