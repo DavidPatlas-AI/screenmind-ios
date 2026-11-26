@@ -210,6 +210,24 @@ import UIKit
         XCTAssertEqual(ProjectIdentity.detect(in: "github.com/features/copilot").count, 0)
         XCTAssertEqual(ProjectIdentity.detect(in: "evilgithub.com/example/my-app").count, 0)
     }
+    func testAIAnalysisIsSeparateReversibleAndInvalidatedByEdits() throws {
+        var capture = idea("ai", title: "raw", text: "invoice payment", reviewed: nil, at: Date())
+        capture.aiAnalysis = AIAnalysis(sourceDigest: capture.aiSourceDigest, title: "כותרת AI",
+            summary: "סיכום מוצע", topic: "finance", suggestedTask: "לבדוק תשלום", language: "he")
+        XCTAssertEqual(capture.displayTitle, "כותרת AI")
+        XCTAssertEqual(capture.effectiveCollection, "כספים ותשלומים")
+        XCTAssertEqual(capture.title, "raw")
+        XCTAssertEqual(capture.text, "invoice payment")
+        XCTAssertNil(capture.taskTitle)
+        XCTAssertNil(capture.reviewedAt)
+        let saved = try JSONDecoder().decode(Capture.self, from: JSONEncoder().encode(capture))
+        XCTAssertEqual(saved.currentAIAnalysis, capture.currentAIAnalysis)
+        capture.collection = "התיקייה שלי"
+        XCTAssertEqual(capture.effectiveCollection, "התיקייה שלי")
+        capture.text = "GitHub SwiftUI"
+        XCTAssertNil(capture.currentAIAnalysis)
+        XCTAssertEqual(capture.smartTopic, .technology)
+    }
     func testMemorySearchRanksRelevantWordsAndRejectsUnrelatedSources() {
         let now = Date()
         let capture = idea("code", title: "מדריך GitHub", text: "SwiftUI פיתוח אפליקציה", at: now)
