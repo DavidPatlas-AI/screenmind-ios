@@ -88,8 +88,27 @@ enum SmartTopic: String, CaseIterable, Sendable {
     }
     private static let vocabulary: [SmartTopic: [[String]]] =
         Dictionary(uniqueKeysWithValues: allCases.map { topic in (topic, topic.keywords.map { words($0) }) })
+    // Bounded in-memory cache: exact bounded input is the key, so edits invalidate
+    // the result. NSCache is thread-safe and evicts under memory pressure.
+    private static let cache: NSCache<NSString, NSString> = {
+        let result = NSCache<NSString, NSString>()
+        result.countLimit = 3000
+        result.totalCostLimit = 12 * 1024 * 1024
+        return result
+    }()
     static func classify(title: String, text: String) -> SmartTopic? {
-        let tokens = words(String(title.prefix(240)) + " " + String(text.prefix(6000)))
+        let head = String(title.prefix(240))
+        let body = String(text.prefix(6000))
+        let key = "\(head.utf16.count):\(head)\(body)" as NSString
+        if let saved = cache.object(forKey: key) {
+            return SmartTopic(rawValue: saved as String)
+        }
+        let result = classifyUncached(head + " " + body)
+        cache.setObject((result?.rawValue ?? "") as NSString, forKey: key, cost: key.length * 2 + 64)
+        return result
+    }
+    private static func classifyUncached(_ source: String) -> SmartTopic? {
+        let tokens = words(source)
         let unique = Set(tokens)
         guard !unique.isEmpty else { return nil }
         let padded = " " + tokens.joined(separator: " ") + " "
