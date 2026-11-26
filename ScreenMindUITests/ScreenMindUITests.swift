@@ -176,8 +176,12 @@ final class ScreenMindUITests: XCTestCase {
         XCTAssertFalse(app.buttons["מחק את הבחירה מתמונות"].exists)
         app.buttons["ייצא ובדוק עותק לפני פינוי"].tap()
         XCTAssertTrue(app.navigationBars["שמירה ופינוי"].waitForExistence(timeout: 5))
-        let deletion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "בקש מחיקה")).firstMatch
-        XCTAssertTrue(deletion.exists)
+        let deletion = app.buttons["verifiedPhotoDeletion"]
+        for _ in 0..<6 {
+            if deletion.exists && deletion.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(deletion.waitForExistence(timeout: 5))
         XCTAssertFalse(deletion.isEnabled)
         snap("10-cleanup-verified-only")
     }
