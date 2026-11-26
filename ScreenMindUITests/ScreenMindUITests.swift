@@ -170,6 +170,10 @@ final class ScreenMindUITests: XCTestCase {
 
     func testNewScreenshotCardAsksBeforeDeleting() {
         let app = launch(["-UITestReset", "-UITestSpaceOffer"])
+        let options = app.buttons["פינוי תמונות (רשות)"]
+        for _ in 0..<5 where !options.isHittable { app.swipeUp() }
+        XCTAssertTrue(options.waitForExistence(timeout: 8))
+        options.tap()
         XCTAssertTrue(app.staticTexts["2 צילומים חדשים נשמרו במוח."].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["למחוק אותם כדי לפנות כ־3.4 MB?"].exists)
         snap("11-space-card")
