@@ -22,6 +22,8 @@
 
 - Rediscovery branch: opt-in local screen with at most six suggestions, explicit shared GitHub/Netlify project links and verified photo dates, old favorites and overdue user-approved tasks. Each suggestion explains its evidence and links to sources. Dismissal is session-only and reversible. No cloud processing, notifications or task creation. Two new unit tests; actual CI and device validation pending.
 
+- Stories branch: project timeline now opens an on-device reading draft with source citations, known photo dates ordered separately from unknown dates, actual thumbnails, user-approved tasks, and a standalone HTML export. No external requests or generated claims. Long projects show up to 40 sources (first and last 20 in the known-date-then-unknown ordering), with omissions explicitly disclosed; OCR excerpts limited to 1100 characters. HTML escapes untrusted source text and blocks network resources. Export is not a backup; thumbnails are reduced. Generative synthesis with citations remains a separate future feature. New tests added; CI and device validation pending.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Deployment and live testing of the optional generative gateway, broader multilingual semantic AI and project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
