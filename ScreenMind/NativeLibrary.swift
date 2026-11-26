@@ -61,7 +61,8 @@ struct ImportReport: Identifiable, Sendable {
     }
     var active: [Capture] { captures.filter { !$0.isArchived } }
     var pending: [Capture] { active.filter(\.needsReview) }
-    var collections: [String] { Array(Set(active.map(\.effectiveCollection))).sorted() }
+    var topicGroups: [String: [Capture]] { Dictionary(grouping: active, by: \.effectiveCollection) }
+    var collections: [String] { topicGroups.keys.sorted() }
     var textAttentionCount: Int { active.filter(\.needsTextAttention).count }
     var recognizedCount: Int { active.filter { $0.textStatus == "complete" || $0.textStatus == "reread" }.count }
 
