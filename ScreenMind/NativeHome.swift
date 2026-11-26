@@ -72,17 +72,6 @@ struct NativeHome: View {
         .alert("לא הצלחנו להשלים את הפעולה", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("הבנתי", role: .cancel) { library.error = nil }
         } message: { Text(library.error ?? "") }
-        .alert("למחוק את הצילומים שנשמרו?", isPresented: Binding(get: { library.confirmSpaceDeletion }, set: { library.confirmSpaceDeletion = $0 })) {
-            Button("העבר לנמחקו לאחרונה", role: .destructive) {
-                Task {
-                    do { try await library.deleteOfferedScreenshots() }
-                    catch { library.error = error.localizedDescription }
-                }
-            }
-            Button("להשאיר בתמונות", role: .cancel) {}
-        } message: {
-            Text("הטקסט נשאר ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
-        }
         .sheet(isPresented: Binding(get: { library.reviewSpaceCaptures }, set: { library.reviewSpaceCaptures = $0 })) {
             NavigationStack {
                 List(library.captures.filter { library.spaceOffer?.captureIDs.contains($0.id) == true }) { capture in
@@ -339,15 +328,12 @@ struct SpaceOfferBar: View {
         if let offer = library.spaceOffer {
             VStack(alignment: .leading, spacing: 8) {
                 Text(offer.headline).font(.headline)
-                Text(offer.question).font(.subheadline).foregroundStyle(.secondary)
+                Text(offer.needsAccess ? offer.question : "המקור נשאר בתמונות. אפשר לעיין בצילומים בלי למחוק אותם.").font(.subheadline).foregroundStyle(.secondary)
                 HStack {
                     if offer.needsAccess {
                         Button("אפשר גישה") { Task { await library.allowScreenshotAccess() } }
                     } else {
                         Button("בדוק") { library.reviewSpaceCaptures = true }.disabled(offer.captureIDs.isEmpty)
-                        if offer.canDelete {
-                            Button("מחק מהתמונות") { library.confirmSpaceDeletion = true }
-                        }
                     }
                     Button("השאר") { library.declineSpaceOffer() }
                 }
