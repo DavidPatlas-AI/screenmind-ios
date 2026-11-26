@@ -201,6 +201,17 @@ struct NativeHome: View {
                         Label("הידע שלך", systemImage: "sparkles").font(.title2.bold())
                         Text("\(library.recognizedCount) צילומים עם טקסט · \(library.collections.count) נושאים")
                             .font(.subheadline).foregroundStyle(.secondary)
+                        NavigationLink {
+                            MemorySearchView(open: { selected = $0 })
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "magnifyingglass").font(.title3)
+                                Text("מה אני רוצה למצוא?").font(.headline)
+                                Spacer()
+                                Image(systemName: "sparkles")
+                            }.padding(12).frame(maxWidth: .infinity)
+                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                        }.buttonStyle(.plain)
                         Button { tab = 3 } label: {
                             Label("פתח את הנושאים שלך", systemImage: "folder.fill")
                                 .frame(maxWidth: .infinity, alignment: .leading)
