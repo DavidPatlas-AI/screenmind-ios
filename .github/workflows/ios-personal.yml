@@ -1,6 +1,9 @@
 name: ScreenMind personal iPhone IPA
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - screenmind-v2-experience
 permissions:
   contents: read
 concurrency:
