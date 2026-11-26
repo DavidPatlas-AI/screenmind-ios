@@ -86,6 +86,7 @@ struct NativeCollectionsView: View {
     @State private var cleanup: CaptureSelection?
     var body: some View {
         let groups = library.topicGroups
+        let projects = ProjectCluster.build(from: library.active)
         let ordered = groups.keys.sorted {
             let left = groups[$0]?.count ?? 0, right = groups[$1]?.count ?? 0
             return left == right ? $0.localizedStandardCompare($1) == .orderedAscending : left > right
@@ -96,6 +97,36 @@ struct NativeCollectionsView: View {
                     Text("עולם הידע שלי").font(.largeTitle.bold())
                     Text("הצילומים כבר מסודרים לנושאים. אפשר לפתוח כל נושא ולגלות מה נשמר.")
                         .font(.subheadline).foregroundStyle(.secondary)
+                }
+                if !projects.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("פרויקטים שהתגלו", systemImage: "folder.badge.gearshape")
+                            .font(.title2.bold())
+                        Text("מקורות שנמצאה בהם אותה כתובת פרויקט, ללא שיוך ידני.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ForEach(projects) { project in
+                            NavigationLink {
+                                ProjectTimelineView(cluster: project, open: open)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                                        .font(.title2).foregroundStyle(.indigo)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color.indigo.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(project.title).font(.headline).foregroundStyle(.primary).lineLimit(2)
+                                        Text("\(project.sources.count) מקורות · ציר זמן")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.backward").foregroundStyle(.secondary).font(.caption)
+                                }.padding(12).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                if !ordered.isEmpty {
+                    Text("נושאים").font(.title2.bold())
                 }
                 if ordered.isEmpty {
                     ContentUnavailableView("כל רעיון יכול לקבל מקום.", systemImage: "folder",
