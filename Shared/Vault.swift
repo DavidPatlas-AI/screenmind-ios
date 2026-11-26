@@ -74,7 +74,7 @@ final class Vault: @unchecked Sendable {
         }
         return capture
     }
-    @discardableResult func save(data: Data, name: String, photoIdentifier: String?, source: String) throws -> Capture {
+    @discardableResult func save(data: Data, name: String, photoIdentifier: String?, source: String, photoCreationDate: Date? = nil) throws -> Capture {
         guard !data.isEmpty, data.count <= 24 * 1024 * 1024,
               let image = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(image) == 1,
               let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
@@ -90,10 +90,13 @@ final class Vault: @unchecked Sendable {
         guard Self.hash(try Data(contentsOf: original)) == id else { throw NativeError.message("שמירת המקור לא אומתה.") }
         let safeName = URL(fileURLWithPath: name).lastPathComponent
         let initial = Capture(id: id, originalName: safeName.isEmpty ? "Screenshot.png" : safeName,
-                              photoIdentifier: photoIdentifier, createdAt: Date(), title: "צילום חדש",
+                              photoIdentifier: photoIdentifier, createdAt: Date(), photoCreatedAt: photoCreationDate, title: "צילום חדש",
                               text: "", source: source)
         return try coordinatedUpdate(id: id, initial: initial) { existing in
             if existing.photoIdentifier == nil { existing.photoIdentifier = photoIdentifier }
+            if let photoIdentifier, existing.photoIdentifier == photoIdentifier, let photoCreationDate {
+                existing.photoCreatedAt = photoCreationDate
+            }
         }
     }
     @discardableResult func update(_ id: String, change: (inout Capture) throws -> Void) throws -> Capture {
