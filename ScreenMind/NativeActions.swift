@@ -500,7 +500,7 @@ struct AIEnrichmentView: View {
                 SecureField("אסימון גישה לשרת (לא מפתח OpenAI)", text: $token)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Picker("שפת התוצאה", selection: $language) {
-                    ForEach(languages, id: \.0) { item in Text(item.1).tag(item.0) }
+                    ForEach(languages.indices, id: \.self) { index in Text(languages[index].1).tag(languages[index].0) }
                 }
             }.disabled(running)
             Section("תצוגה מקדימה של המידע שישלח") {
