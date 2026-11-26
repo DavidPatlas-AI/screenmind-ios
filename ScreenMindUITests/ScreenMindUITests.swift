@@ -50,7 +50,9 @@ final class ScreenMindUITests: XCTestCase {
 
     func testSeededBrainOpensATopicAndRereadsTheSource() {
         let app = launch(["-UITestSeed"])
-        XCTAssertTrue(app.buttons["המוח של הרעיונות"].waitForExistence(timeout: 8))
+        let brainLink = app.buttons["המוח של הרעיונות"]
+        for _ in 0..<3 where !brainLink.isHittable { app.swipeUp() }
+        XCTAssertTrue(brainLink.waitForExistence(timeout: 8))
         app.tabBars.buttons["המוח"].tap()
         let moment = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "הגיע הרגע")).firstMatch
         XCTAssertTrue(moment.waitForExistence(timeout: 5))
@@ -69,6 +71,16 @@ final class ScreenMindUITests: XCTestCase {
         if !finished.waitForExistence(timeout: 8) { app.swipeDown() }
         XCTAssertTrue(finished.waitForExistence(timeout: 30))
         snap("03-source-reread")
+    }
+
+    func testKnowledgeTopicsOpenWithoutManualReview() {
+        let app = launch(["-UITestSeed"])
+        app.tabBars.buttons["מרחבים"].tap()
+        XCTAssertTrue(app.staticTexts["עולם הידע שלי"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["הבית"].waitForExistence(timeout: 5))
+        app.staticTexts["הבית"].tap()
+        XCTAssertTrue(app.buttons["שולחן אלון"].waitForExistence(timeout: 8))
+        snap("13-knowledge-topics")
     }
 
     func testReviewAsksWhyTheScreenshotWasSaved() {
