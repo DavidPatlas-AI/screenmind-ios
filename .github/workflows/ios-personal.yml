@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - screenmind-v2-experience
+      - screenmind-v2-projects
 permissions:
   contents: read
 concurrency:
