@@ -13,6 +13,7 @@ struct NativeHome: View {
     private enum ScanPrompt { case short, album }
     @State private var scanPrompt: ScanPrompt?
     @State private var albumCleanup = false
+    @State private var showCleanupOptions = false
     var body: some View {
         TabView(selection: $tab) {
             tabPage { home.navigationTitle("ScreenMind").toolbar { toolbar } }
@@ -55,16 +56,16 @@ struct NativeHome: View {
                     Text("\(report.saved) צילומים חדשים · \(report.duplicates) כבר היו בארכיון")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     if report.failures > 0 { Text("\(report.failures) קבצים לא נקלטו. אפשר לבחור אותם ולנסות שוב.").foregroundStyle(.orange) }
-                    Text("עכשיו רק מבט קטן על הטקסט והכוונה. שום צילום לא נמחק מהתמונות.")
+                    Text("הצילומים זמינים בספרייה ובנושאים האוטומטיים. אין צורך לאשר כל צילום. שום צילום לא נמחק מהתמונות.")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     if !report.reviewIDs.isEmpty {
-                        Button("לסקירת \(report.reviewIDs.count) צילומים") {
+                        Button("סקירה ידנית (רשות)") {
                             reviewIDs = report.reviewIDs
                             reviewAfterImport = true
                             library.report = nil
                         }.buttonStyle(.borderedProminent).controlSize(.large)
                     }
-                    Button("להשאיר להמשך") { library.report = nil }.controlSize(.large)
+                    Button("סיום") { library.report = nil }.controlSize(.large)
                 }.padding(28).navigationTitle("נשמר, לא נמחק").navigationBarTitleDisplayMode(.inline)
             }.presentationDetents([.medium, .large])
         }
@@ -185,8 +186,8 @@ struct NativeHome: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("פחות לשמור בראש.").font(.largeTitle.weight(.semibold))
-                    Text("הדברים שצילמת, והרעיונות שחיכו. עכשיו יש להם מקום.").foregroundStyle(.secondary)
+                    Text("הידע שלך, במקום אחד").font(.largeTitle.weight(.semibold))
+                    Text("הצילומים מתארגנים לנושאים. אין צורך למיין אחד־אחד.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
                 albumCard
                 if library.captures.isEmpty {
@@ -196,17 +197,24 @@ struct NativeHome: View {
                         Text("בחר צילומים בכפתור +, או שתף תמונה מכל אפליקציה אל ScreenMind. המקור נשמר לפני זיהוי הטקסט.")
                     }
                 } else {
-                    Button { reviewIDs = nil; review = true } label: {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Label(library.pending.isEmpty ? "אפשר לנשום." : "רק מבט קטן ממך.", systemImage: "viewfinder")
-                                .font(.title3.weight(.medium))
-                            Text(library.pending.isEmpty ? "אין כרגע צילומים שמחכים לסקירה." : "\(library.pending.count) צילומים מוכנים לבדיקה. תקן, אשר והמשך.")
-                                .font(.subheadline).foregroundStyle(.secondary)
-                            if !library.pending.isEmpty { Label("לסקירה", systemImage: "arrow.up.left").font(.subheadline.weight(.medium)) }
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
-                            .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel(library.pending.isEmpty ? "אין צילומים לסקירה" : "לסקירה")
+                    VStack(alignment: .leading, spacing: 14) {
+                        Label("הידע שלך", systemImage: "sparkles").font(.title2.bold())
+                        Text("\(library.recognizedCount) צילומים עם טקסט · \(library.collections.count) נושאים")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Button { tab = 3 } label: {
+                            Label("פתח את הנושאים שלך", systemImage: "folder.fill")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }.buttonStyle(.borderedProminent)
+                        if library.textAttentionCount > 0 {
+                            Text("\(library.textAttentionCount) צילומים ללא טקסט או עם שגיאת זיהוי. אפשר לחזור אליהם לפי הצורך.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if !library.pending.isEmpty {
+                            Button("סקירה ידנית (רשות)") { reviewIDs = nil; review = true }
+                                .font(.footnote).accessibilityLabel("לסקירה")
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                        .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
                     Button { tab = 2 } label: {
                         HStack(spacing: 14) {
                             Image(systemName: "brain.head.profile").font(.title2)
@@ -253,7 +261,15 @@ struct NativeHome: View {
                     Label("סרוק צילומי מסך באישור גישה", systemImage: "photo.badge.magnifyingglass")
                         .frame(maxWidth: .infinity, minHeight: 32)
                 }.buttonStyle(.bordered).disabled(library.busy)
-                Label("הזיהוי מתבצע במכשיר. אין חשבון ואין שליחה לספק AI.", systemImage: "lock.shield")
+                if library.spaceOffer != nil {
+                    DisclosureGroup("פינוי תמונות (רשות)", isExpanded: $showCleanupOptions) {
+                        Text("לפני מחיקת צילום חשוב, שמור עותק מלא מחוץ לאפליקציה. סריקת אלבום שומרת תמונה מוקטנת.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        SpaceOfferBar()
+                    }.padding(16)
+                        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                }
+                Label("הזיהוי והמיון הבסיסי מתבצעים במכשיר. אין שליחה לספק AI.", systemImage: "lock.shield")
                     .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
             }.padding(20)
         }.background(NativeTheme.canvas)
@@ -278,17 +294,17 @@ struct CaptureTile: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 9) {
-                    Text(capture.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
+                    Text(capture.displayTitle).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack {
-                        Text(capture.needsReview ? "לסקירה" : capture.collection).lineLimit(1)
+                        Text(capture.effectiveCollection).lineLimit(1)
                         Spacer(minLength: 3)
                         if capture.isFavorite { Image(systemName: "star.fill").foregroundStyle(.orange) }
                     }.font(.caption).foregroundStyle(.secondary)
                 }.padding(13)
             }.background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18)).clipShape(RoundedRectangle(cornerRadius: 18))
-        }.buttonStyle(.plain).accessibilityLabel(capture.title)
-            .accessibilityValue(selected ? "נבחר" : capture.needsReview ? "ממתין לסקירה" : capture.collection)
+        }.buttonStyle(.plain).accessibilityLabel(capture.displayTitle)
+            .accessibilityValue(selected ? "נבחר" : capture.effectiveCollection)
     }
 }
 
@@ -296,8 +312,7 @@ extension View {
     /// Bars live on the screen itself, inside the navigation stack. That keeps them
     /// after a push, lets lists scroll clear, and leaves a bottom toolbar above the scan bar.
     func screenMindBars() -> some View {
-        safeAreaInset(edge: .top, spacing: 0) { SpaceOfferBar() }
-            .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
+        safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
     }
 }
 
