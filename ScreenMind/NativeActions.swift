@@ -207,7 +207,7 @@ struct ProjectTimelineView: View {
 // Search is deliberately read-only. Apple sentence embeddings are used only
 // when the OS supplies one for the query language; lexical search always works.
 struct MemorySearchHit: Identifiable, Sendable {
-    enum Match: String, Sendable { case exact, partial, semantic }
+    enum Match: String, Sendable { case exact, partial, semantic, related }
     let id: String
     let score: Double
     let match: Match
@@ -222,39 +222,10 @@ actor MemorySearchEngine {
     static let shared = MemorySearchEngine()
     private var embeddings: [String: NLEmbedding] = [:]
     private var vectors: [String: [Double]] = [:]
-    private static let ignored: Set<String> = [
-        "את","של","על","עם","מה","איך","איפה","מתי","לי","אני","כל","מצא","תמצא","צילמתי","שמרתי","האם",
-        "the","a","an","to","of","in","my","me","what","where","find","show","saved","about","did","i",
-        "где","что","мне","найди","как","про","это","мой","мои"
-    ]
-    nonisolated static func normalize(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-            .lowercased().split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
-    }
-    nonisolated static func terms(_ query: String) -> [String] {
-        let all = normalize(query).split(separator: " ").map(String.init)
-        let useful = all.filter { !ignored.contains($0) }
-        return Array(Set(useful.isEmpty ? all : useful)).sorted()
-    }
+    private var indexedCaptures: [Capture] = []
+    private var lexicalIndex: MemoryLexicalIndex?
     nonisolated static func lexical(query: String, capture: Capture) -> MemorySearchHit? {
-        let terms = terms(query)
-        guard !terms.isEmpty else { return nil }
-        let title = normalize(capture.title + " " + capture.displayTitle)
-        let body = normalize(capture.text)
-        let group = normalize(capture.effectiveCollection)
-        let titleWords = Set(title.split(separator: " ").map(String.init))
-        let bodyWords = Set(body.split(separator: " ").map(String.init))
-        let groupWords = Set(group.split(separator: " ").map(String.init))
-        var score = 0.0, matches = 0
-        for term in terms {
-            if titleWords.contains(term) { score += 4; matches += 1 }
-            else if bodyWords.contains(term) { score += 2; matches += 1 }
-            else if groupWords.contains(term) { score += 1; matches += 1 }
-        }
-        guard matches > 0, matches * 2 >= terms.count else { return nil }
-        let full = matches == terms.count
-        return MemorySearchHit(id: capture.id, score: (full ? 100 : 50) + score / Double(terms.count),
-                               match: full ? .exact : .partial)
+        MemoryLexicalIndex(captures: [capture]).search(query, limit: 1).first
     }
     nonisolated static func cosine(_ lhs: [Double], _ rhs: [Double]) -> Double? {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
@@ -283,10 +254,11 @@ actor MemorySearchEngine {
         guard !cleaned.isEmpty else {
             return MemorySearchResponse(hits: [], semanticAvailable: false, semanticExamined: 0, total: active.count)
         }
-        for capture in active {
-            if Task.isCancelled { break }
-            if let hit = Self.lexical(query: cleaned, capture: capture) { hits.append(hit) }
+        if lexicalIndex == nil || indexedCaptures != active {
+            lexicalIndex = MemoryLexicalIndex(captures: active)
+            indexedCaptures = active
         }
+        hits = lexicalIndex?.search(cleaned) ?? []
         var available = false
         var examined = 0
         if !Task.isCancelled, let language = NLLanguageRecognizer.dominantLanguage(for: cleaned) {
@@ -362,7 +334,7 @@ struct MemorySearchView: View {
                     if let capture = library.capture(hit.id) {
                         Button { open(capture) } label: {
                             VStack(alignment: .leading, spacing: 6) {
-                                Label(hit.match == .semantic ? "דמיון במשמעות" : hit.match == .exact ? "התאמת מילות חיפוש" : "התאמה חלקית",
+                                Label(hit.match == .semantic ? "דמיון במשמעות" : hit.match == .exact ? "התאמת מילות חיפוש" : hit.match == .related ? "מילים מקבילות או נטייה" : "התאמה חלקית",
                                       systemImage: hit.match == .semantic ? "sparkles" : "magnifyingglass")
                                     .font(.caption).foregroundStyle(NativeTheme.accent)
                                 Text(capture.displayTitle).font(.headline).foregroundStyle(.primary)
