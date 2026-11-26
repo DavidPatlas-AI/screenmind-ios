@@ -74,3 +74,130 @@ enum CollectionBrief {
         return lines.joined(separator: "\n")
     }
 }
+
+
+// Local evidence-based project identities. No external network requests.
+struct ProjectIdentity: Hashable, Sendable {
+    let key: String
+    let title: String
+    private static let pattern = try! NSRegularExpression(
+        pattern: #"(?<![\w@./-])(?:https?://)?(?:www\.)?(?:github\.com/([a-z0-9][a-z0-9-]{0,38})/([a-z0-9_.-]{1,100})|([a-z0-9][a-z0-9-]{0,62})\.netlify\.app)(?=$|[\s/?:#)\],.!;"'])"#,
+        options: [.caseInsensitive]
+    )
+    private static let reserved: Set<String> = [
+        "features", "topics", "collections", "marketplace", "settings",
+        "search", "orgs", "users", "login", "signup", "notifications", "explore", "sponsors", "about"
+    ]
+    static func detect(in source: String) -> Set<ProjectIdentity> {
+        let text = String(source.prefix(10000))
+        let matches = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        var result = Set<ProjectIdentity>()
+        for match in matches {
+            func value(_ index: Int) -> String? {
+                guard let range = Range(match.range(at: index), in: text) else { return nil }
+                return String(text[range]).lowercased()
+            }
+            if let owner = value(1), let rawRepo = value(2), !reserved.contains(owner) {
+                var repo = rawRepo.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                if repo.hasSuffix(".git") { repo.removeLast(4) }
+                guard !repo.isEmpty else { continue }
+                result.insert(ProjectIdentity(key: "github:" + owner + "/" + repo, title: owner + "/" + repo))
+            } else if let site = value(3) {
+                result.insert(ProjectIdentity(key: "netlify:" + site, title: site + ".netlify.app"))
+            }
+        }
+        return result
+    }
+}
+
+struct ProjectCluster: Identifiable, Sendable {
+    let identity: ProjectIdentity
+    let sources: [Capture]
+    var id: String { identity.key }
+    var title: String { identity.title }
+    var hasUnknownDates: Bool { sources.contains { $0.photoCreatedAt == nil } }
+
+    static func build(from captures: [Capture]) -> [ProjectCluster] {
+        var groups: [ProjectIdentity: [Capture]] = [:]
+        for capture in captures where !capture.isArchived {
+            let references = ProjectIdentity.detect(in: capture.title + "\n" + capture.text)
+            // Multiple distinct links are ambiguous. Do not force membership.
+            guard references.count == 1, let identity = references.first else { continue }
+            groups[identity, default: []].append(capture)
+        }
+        return groups.compactMap { identity, sources -> ProjectCluster? in
+            guard sources.count >= 2 else { return nil }
+            let ordered = sources.sorted {
+                $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate < $1.sourceDate
+            }
+            return ProjectCluster(identity: identity, sources: ordered)
+        }.sorted {
+            $0.sources.count == $1.sources.count ? $0.id < $1.id : $0.sources.count > $1.sources.count
+        }
+    }
+
+    // Evidence-only article draft, not a generative summary.
+    var brief: String {
+        var lines = ["# " + title, "טיוטת מקורות לפי ציר זמן, לא סיכום AI.", ""]
+        if hasUnknownDates { lines += ["בחלק מהמקורות מוצג תאריך הייבוא במקום תאריך הצילום.", ""] }
+        for (index, capture) in sources.enumerated() {
+            lines += [
+                "## \(index + 1). \(capture.displayTitle)",
+                (capture.photoCreatedAt == nil ? "תאריך ייבוא: " : "תאריך צילום: ") +
+                    capture.sourceDate.formatted(date: .abbreviated, time: .shortened),
+                capture.text.isEmpty ? "אין טקסט מזוהה." : capture.text,
+                "מזהה מקור: " + capture.id,
+                ""
+            ]
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+struct ProjectTimelineView: View {
+    let cluster: ProjectCluster
+    let open: (Capture) -> Void
+    @EnvironmentObject private var library: NativeLibrary
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("ציר זמן של הפרויקט", systemImage: "clock.arrow.circlepath")
+                    .font(.title2.bold())
+                Text(cluster.title).font(.headline).textSelection(.enabled)
+                Text("\(cluster.sources.count) מקורות עם כתובת פרויקט משותפת")
+                    .foregroundStyle(.secondary)
+                if cluster.hasUnknownDates {
+                    Label("למקורות ללא תאריך צילום מוצג תאריך הייבוא.", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ShareLink(item: cluster.brief) {
+                    Label("ייצא טיוטת מקורות", systemImage: "square.and.arrow.up")
+                }.buttonStyle(.borderedProminent)
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(cluster.sources) { capture in
+                        Button {
+                            if let current = library.capture(capture.id) { open(current) }
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                if let image = library.thumbnail(capture) {
+                                    Image(uiImage: image).resizable().scaledToFill()
+                                        .frame(width: 76, height: 92).clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(capture.sourceDate.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text(capture.displayTitle).font(.headline).lineLimit(3)
+                                    Text(capture.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
+                            }.padding(12).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }.padding(18)
+        }.background(NativeTheme.canvas)
+            .navigationTitle("פרויקט")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
