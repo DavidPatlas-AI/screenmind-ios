@@ -7,6 +7,7 @@ on:
       - screenmind-v2-projects
       - screenmind-v2-intelligence
       - screenmind-v2-ai
+      - screenmind-v2-release-safety
 permissions:
   contents: read
 concurrency:
