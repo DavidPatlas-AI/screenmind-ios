@@ -70,6 +70,7 @@ struct CleanupView: View {
                         Button(role: .destructive) { confirmDeletion = true } label: {
                             Label("בקש מחיקה של \(captures.count) צילומים מתמונות", systemImage: "trash")
                         }.disabled(!canRequestDeletion)
+                            .accessibilityIdentifier("verifiedPhotoDeletion")
                         Text("לפני הבקשה נבדקים מחדש העותק החיצוני, המקור בארכיון והצילום בספריית התמונות. תמונות שעברו עריכה או שאינן צילומי מסך לא יימחקו דרך הזרימה הזו.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
