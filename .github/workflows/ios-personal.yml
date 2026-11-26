@@ -16,6 +16,7 @@ on:
       - screenmind-v2-backup-check
       - screenmind-v2-gemini
       - screenmind-v2-model-lab
+      - screenmind-v2-safe-restore
 permissions:
   contents: read
 concurrency:
