@@ -10,8 +10,10 @@
 
 - Second pass: bounded topic cache; single-pass collection grouping; color-coded topic cards; automatic navigation to topics on completed scan; optional review secondary to finishing import. Tests added for cache and topic navigation.
 
+- Projects branch: discovers groups of at least two screenshots with the same explicit GitHub repository or Netlify app address. Ambiguous multi-project screenshots are not assigned. Project cards open a source timeline and allow a text-only source draft export; no generated AI claims. Added project chronology and legacy-data decoding tests.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
-- Genuine multilingual semantic AI, project inference, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
+- Genuine multilingual semantic AI, broader project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
 - No automatic deletion. Album scan currently stores reduced images, not always originals. Do not delete important originals without verified full-size backup.
 - Preserve manual edits and ensure backward-compatible migration. No provider credentials embedded, no sending private captures without opt-in.
