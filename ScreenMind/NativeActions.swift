@@ -390,3 +390,209 @@ struct MemorySearchView: View {
         }
     }
 }
+
+
+// Optional cloud enrichment. The provider API key belongs on the user's
+// gateway, never in this app. The gateway token is kept only for this screen.
+private struct AIWireInput: Codable, Sendable {
+    let id: String
+    let title: String
+    let text: String
+}
+private struct AIBatchSource: Identifiable, Sendable {
+    let id: String
+    let captureID: String
+    let digest: String
+    let wire: AIWireInput
+}
+private struct AIWireResult: Codable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let summary: String
+    let topic: String
+    let suggestedTask: String
+}
+private struct AIWireRequest: Encodable {
+    let language: String
+    let items: [AIWireInput]
+}
+private struct AIWireResponse: Decodable {
+    let items: [AIWireResult]
+}
+private final class AIGatewayNoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+private enum AIGateway {
+    static func endpoint(_ raw: String) -> URL? {
+        guard let parts = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parts.scheme?.lowercased() == "https", let host = parts.host, !host.isEmpty,
+              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+              parts.path == "/analyze" else { return nil }
+        return parts.url
+    }
+    static func analyze(endpoint: URL, token: String, language: String,
+                        sources: [AIBatchSource]) async throws -> [AIWireResult] {
+        guard !sources.isEmpty, sources.count <= 12, token.count >= 32 else {
+            throw NativeError.message("חסרים פרטי חיבור או מקורות.")
+        }
+        var request = URLRequest(url: endpoint, timeoutInterval: 70)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(AIWireRequest(language: language, items: sources.map(\.wire)))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        let session = URLSession(configuration: configuration, delegate: AIGatewayNoRedirect(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, data.count <= 128 * 1024 else {
+            throw NativeError.message("השרת לא החזיר ניתוח תקין. בדוק כתובת, הרשאה ומגבלת שימוש.")
+        }
+        let output = try JSONDecoder().decode(AIWireResponse.self, from: data).items
+        let expected = Set(sources.map(\.id))
+        guard output.count == expected.count, Set(output.map(\.id)) == expected,
+              output.allSatisfy({ item in
+                  !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                  item.title.utf16.count <= 240 && item.summary.utf16.count <= 1200 &&
+                  item.suggestedTask.utf16.count <= 300 &&
+                  (item.topic == "unknown" || SmartTopic(rawValue: item.topic) != nil)
+              }) else { throw NativeError.message("התקבלה תשובה חסרה או לא תקינה. דבר לא נשמר.") }
+        return output
+    }
+}
+
+struct AIEnrichmentView: View {
+    @EnvironmentObject private var library: NativeLibrary
+    @State private var endpointText = ""
+    @State private var token = ""
+    @State private var language = "he"
+    @State private var sources: [AIBatchSource] = []
+    @State private var output: [AIWireResult] = []
+    @State private var resultLanguage = "he"
+    @State private var running = false
+    @State private var message = ""
+    @State private var work: Task<Void, Never>?
+    private let languages = [
+        ("he","עברית"),("en","English"),("ru","Русский"),("es","Español"),
+        ("fr","Français"),("de","Deutsch"),("ar","العربية"),("it","Italiano"),
+        ("pt","Português"),("ja","日本語"),("zh","中文"),("hi","हिन्दी")
+    ]
+    private var ready: Bool {
+        AIGateway.endpoint(endpointText) != nil && token.count >= 32 && !sources.isEmpty && !running
+    }
+    var body: some View {
+        List {
+            Section {
+                Text("הבנת תוכן באמצעות AI").font(.title2.bold())
+                Text("אפשרות ניסיונית. חיבור לשרת פרטי נדרש. רק הטקסט המוצג בסבב יישלח לשרת ולספק AI לאחר לחיצה מפורשת. אין שליחת תמונות ואין שליחה אוטומטית.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Text("אין לשלוח סיסמאות, מידע צבאי, מסמכים אישיים או פרטי זיהוי. הספק עשוי לשמור נתונים בהתאם למדיניותו ולחייב לפי שימוש.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            Section("חיבור לשרת") {
+                TextField("https://your-server.example/analyze", text: $endpointText)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("אסימון גישה לשרת (לא מפתח OpenAI)", text: $token)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Picker("שפת התוצאה", selection: $language) {
+                    ForEach(languages, id: \.0) { item in Text(item.1).tag(item.0) }
+                }
+            }.disabled(running)
+            Section("תצוגה מקדימה של המידע שישלח") {
+                Button("הכן עד 12 מקורות שטרם נותחו") { prepare() }
+                    .disabled(running || library.busy)
+                if sources.isEmpty {
+                    Text("לא נבחרו מקורות. לחיצה על הכנה אינה שולחת מידע.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(sources) { source in
+                    DisclosureGroup(source.wire.title.isEmpty ? "צילום" : source.wire.title) {
+                        Text(source.wire.text).font(.caption).textSelection(.enabled)
+                        Button("הסר מהסבב", role: .destructive) {
+                            sources.removeAll { $0.id == source.id }; output = []
+                        }
+                    }.disabled(running)
+                }
+                Button {
+                    start()
+                } label: {
+                    Label("אשר שליחת \(sources.count) מקורות ל־AI", systemImage: "sparkles")
+                }.disabled(!ready)
+                if running {
+                    ProgressView("מנתח את הסבב…")
+                    Button("בטל") { work?.cancel(); work = nil; running = false }
+                }
+            }
+            if !output.isEmpty {
+                Section("תוצאות מוצעות — עדיין לא נשמרו") {
+                    ForEach(output) { item in
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(item.title).font(.headline)
+                            Text(item.summary).font(.subheadline)
+                            Text(SmartTopic(rawValue: item.topic)?.label ?? "נושא לא ודאי")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if !item.suggestedTask.isEmpty {
+                                Label(item.suggestedTask, systemImage: "checklist").font(.caption)
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                    Button("שמור את המיון והסיכומים של כל הסבב") { apply() }
+                        .disabled(running || library.busy || library.scanLoopActive)
+                }
+            }
+            if !message.isEmpty { Section { Text(message).font(.subheadline) } }
+            Section {
+                Text("הניתוח נשמר בשדה נפרד. תיקונים ידניים, המקורות ואישורי מחיקה אינם משתנים. שינוי בטקסט מבטל ניתוח ישן. משימות הן הצעות בלבד.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.navigationTitle("ScreenMind AI")
+            .onDisappear { work?.cancel(); work = nil; running = false; token = "" }
+    }
+    private func prepare() {
+        let candidates = library.active.filter {
+            $0.currentAIAnalysis == nil && !$0.aiInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.sorted { $0.sourceDate > $1.sourceDate }
+        sources = Array(candidates.prefix(12).enumerated()).map { index, capture in
+            let id = "s\(index)"
+            return AIBatchSource(id: id, captureID: capture.id, digest: capture.aiSourceDigest,
+                                 wire: AIWireInput(id: id, title: capture.aiInputTitle, text: capture.aiInputText))
+        }
+        output = []
+        message = sources.isEmpty ? "אין מקורות נוספים עם טקסט מזוהה." : "בדוק את הטקסט והסר מידע רגיש לפני השליחה."
+    }
+    private func start() {
+        guard ready, let url = AIGateway.endpoint(endpointText) else { return }
+        let batch = sources, accessToken = token, selectedLanguage = language
+        running = true; output = []; message = ""
+        work = Task {
+            do {
+                let result = try await AIGateway.analyze(endpoint: url, token: accessToken,
+                                                         language: selectedLanguage, sources: batch)
+                guard !Task.isCancelled else { return }
+                resultLanguage = selectedLanguage
+                output = result
+                message = "בדוק את ההצעות. אפשר לשמור את כל הסבב בלחיצה אחת."
+            } catch {
+                guard !Task.isCancelled else { return }
+                message = "הניתוח נכשל. לא נשמר דבר. בדוק את החיבור לשרת."
+            }
+            running = false
+        }
+    }
+    private func apply() {
+        var analyses: [String: AIAnalysis] = [:]
+        for item in output {
+            guard let source = sources.first(where: { $0.id == item.id }) else { continue }
+            analyses[source.captureID] = AIAnalysis(sourceDigest: source.digest, title: item.title,
+                summary: item.summary, topic: item.topic, suggestedTask: item.suggestedTask, language: resultLanguage)
+        }
+        let count = library.applyAIAnalyses(analyses)
+        message = "נשמרו \(count) ניתוחים מתוך \(analyses.count). מקורות שהשתנו או לא נשמרו לא עודכנו."
+        sources = []; output = []
+    }
+}
