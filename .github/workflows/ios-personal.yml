@@ -5,6 +5,7 @@ on:
     branches:
       - screenmind-v2-experience
       - screenmind-v2-projects
+      - screenmind-v2-intelligence
 permissions:
   contents: read
 concurrency:
