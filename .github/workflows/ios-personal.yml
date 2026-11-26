@@ -10,6 +10,7 @@ on:
       - screenmind-v2-release-safety
       - screenmind-v2-quality
       - screenmind-v2-rediscovery
+      - screenmind-v2-stories
 permissions:
   contents: read
 concurrency:
