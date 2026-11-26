@@ -177,6 +177,13 @@ import UIKit
         XCTAssertEqual(SmartTopic.classify(title: "برمجة", text: "ذكاء اصطناعي"), .technology)
         XCTAssertNil(SmartTopic.classify(title: "GitHub", text: "hotel"))
     }
+    func testSmartTopicCacheRespectsEdits() {
+        XCTAssertEqual(SmartTopic.classify(title: "same", text: "GitHub SwiftUI"), .technology)
+        XCTAssertEqual(SmartTopic.classify(title: "same", text: "invoice payment"), .finance)
+        XCTAssertNil(SmartTopic.classify(title: "same", text: "add audio"))
+        XCTAssertNil(SmartTopic.classify(title: "same", text: "add audio"))
+        XCTAssertEqual(SmartTopic.classify(title: "same", text: "GitHub SwiftUI"), .technology)
+    }
     func testAutoGroupingNeverApprovesDeletionOrOverridesManualCollection() {
         let now = Date()
         var capture = idea("smart", title: "add", text: "GitHub SwiftUI programming guide", reviewed: nil, at: now)
