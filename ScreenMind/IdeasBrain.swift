@@ -141,22 +141,10 @@ extension BrainGraph {
         for capture in active {
             tokensByID[capture.id] = BrainText.tokens(title: capture.title, text: capture.text)
         }
-        var documentFrequency: [String: Int] = [:]
-        var intentFrequency: [SaveIntent: [String: Int]] = [:]
-        for capture in active {
-            let unique = Set(tokensByID[capture.id] ?? [])
-            var counts = intentFrequency[capture.intent] ?? [:]
-            for token in unique {
-                documentFrequency[token, default: 0] += 1
-                counts[token, default: 0] += 1
-            }
-            intentFrequency[capture.intent] = counts
-        }
-
         var members: [String: [Capture]] = [:]
         var titles: [String: String] = [:]
         for capture in active {
-            let key = topicKey(for: capture, tokens: tokensByID[capture.id] ?? [], documentFrequency: documentFrequency, intentFrequency: intentFrequency)
+            let key = topicKey(for: capture)
             members[key, default: []].append(capture)
             if titles[key] == nil { titles[key] = topicTitle(for: key, capture: capture) }
         }
@@ -213,7 +201,7 @@ extension BrainGraph {
         count == 1 ? "מקור אחד" : "\(count) מקורות"
     }
 
-    private static func topicKey(for capture: Capture, tokens: [String], documentFrequency: [String: Int], intentFrequency: [SaveIntent: [String: Int]]) -> String {
+    private static func topicKey(for capture: Capture) -> String {
         let collection = capture.collection.trimmingCharacters(in: .whitespacesAndNewlines)
         if !collection.isEmpty && collection != "כללי" { return "space:\(collection)" }
         if let topic = capture.smartTopic { return "smart:\(topic.rawValue)" }
