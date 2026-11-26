@@ -177,6 +177,24 @@ import UIKit
         XCTAssertEqual(SmartTopic.classify(title: "برمجة", text: "ذكاء اصطناعي"), .technology)
         XCTAssertNil(SmartTopic.classify(title: "GitHub", text: "hotel"))
     }
+    func testProjectDiscoveryUsesExplicitRepeatedIdentityAndChronology() {
+        let now = Date(timeIntervalSince1970: 1_763_769_600)
+        var newer = idea("new", title: "Build", text: "https://github.com/example/my-app/issues/7", at: now)
+        var older = idea("old", title: "Research", text: "github.com/Example/My-App.git", at: now.addingTimeInterval(20))
+        newer.photoCreatedAt = now
+        older.photoCreatedAt = now.addingTimeInterval(-100)
+        let ambiguous = idea("ambiguous", title: "Links", text: "github.com/example/my-app and other.netlify.app", at: now)
+        let single = idea("single", title: "Demo", text: "other.netlify.app", at: now)
+        var archived = idea("archived", title: "Old", text: "github.com/example/my-app", at: now)
+        archived.isArchived = true
+        let groups = ProjectCluster.build(from: [newer, older, ambiguous, single, archived])
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups.first?.id, "github:example/my-app")
+        XCTAssertEqual(groups.first?.sources.map(\.id), ["old", "new"])
+        XCTAssertTrue(groups.first?.brief.contains("מזהה מקור: old") == true)
+        XCTAssertEqual(ProjectIdentity.detect(in: "github.com/features/copilot").count, 0)
+        XCTAssertEqual(ProjectIdentity.detect(in: "evilgithub.com/example/my-app").count, 0)
+    }
     func testSmartTopicCacheRespectsEdits() {
         XCTAssertEqual(SmartTopic.classify(title: "same", text: "GitHub SwiftUI"), .technology)
         XCTAssertEqual(SmartTopic.classify(title: "same", text: "invoice payment"), .finance)
