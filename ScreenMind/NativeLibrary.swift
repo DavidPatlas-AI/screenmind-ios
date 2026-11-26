@@ -298,6 +298,18 @@ struct ImportReport: Identifiable, Sendable {
             }
         } catch { self.error = error.localizedDescription }
     }
+    func restoreBackup(_ verified: VerifiedBackup) async throws -> VerifiedBackup.RestoreReport {
+        guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
+            throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
+        }
+        busy = true
+        progress = "משחזר מקורות חדשים בלבד…"
+        backupReceipt = nil
+        defer { busy = false; progress = ""; refresh(); refreshCleanupSummary() }
+        return try await Task.detached(priority: .userInitiated) {
+            try verified.restoreNew(to: vault)
+        }.value
+    }
     func prepareBackup(ids: Set<String>) async throws -> PreparedBackup {
         guard !busy, !scanLoopActive, let vault else { throw NativeError.message("המתן לסיום הפעולה הנוכחית.") }
         let selected = captures.filter { ids.contains($0.id) }
