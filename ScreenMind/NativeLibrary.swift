@@ -110,6 +110,23 @@ struct ImportReport: Identifiable, Sendable {
         do { try vault.update(id, change: change); refresh(); return true }
         catch { self.error = error.localizedDescription; return false }
     }
+    func applyAIAnalyses(_ results: [String: AIAnalysis]) -> Int {
+        guard !busy, !scanLoopActive, let vault else { return 0 }
+        var applied = 0
+        for (id, analysis) in results {
+            do {
+                var accepted = false
+                _ = try vault.update(id) { capture in
+                    guard !capture.isArchived, capture.aiSourceDigest == analysis.sourceDigest else { return }
+                    capture.aiAnalysis = analysis
+                    accepted = true
+                }
+                if accepted { applied += 1 }
+            } catch { self.error = error.localizedDescription }
+        }
+        refresh()
+        return applied
+    }
     func capture(_ id: String) -> Capture? { captures.first { $0.id == id } }
     func image(_ capture: Capture) -> UIImage? {
         guard let vault else { return nil }
