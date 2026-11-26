@@ -56,7 +56,7 @@ struct NativeActionsView: View {
 
 enum CollectionBrief {
     static func text(name: String, captures: [Capture]) -> String {
-        let sources = captures.filter { !$0.isArchived && $0.collection == name }
+        let sources = captures.filter { !$0.isArchived && $0.effectiveCollection == name }
         var lines = ["# " + name, "איסוף מהמקורות ששמרתי ב־ScreenMind; לא סיכום שנוצר ב־AI.", ""]
         for (index, capture) in sources.enumerated() {
             lines.append("## \(index + 1). \(capture.title)")
