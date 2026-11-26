@@ -678,6 +678,62 @@ import UIKit
         XCTAssertThrowsError(try VerifiedBackup.inspect(BackupArchive.zip(unknown)))
     }
 
+    func testBackupRestorePreservesMetadataAndNeverOverwrites() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let vault = try Vault(rootURL: folder)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
+        let bytes = renderer.pngData { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        var capture = idea(Vault.hash(bytes), title: "כותרת", text: "טקסט", intent: .act, task: "משימה", at: Date(timeIntervalSince1970: 1234))
+        capture.photoIdentifier = "stale-photo-identifier"
+        capture.photoDeletedAt = Date()
+        capture.viewedAt = Date()
+        capture.isFavorite = true
+        let zip = try BackupArchive.zip([
+            ("sources/" + capture.id + "-" + capture.originalName, bytes),
+            ("manifest.json", try JSONEncoder().encode([capture])),
+            ("README.txt", Data("backup".utf8))
+        ])
+        let backup = try VerifiedBackup.inspect(zip)
+        let restored = try backup.restoreNew(to: vault)
+        XCTAssertEqual(restored.inserted, 1)
+        XCTAssertEqual(restored.failed, 0)
+        let stored = try XCTUnwrap(vault.all().first)
+        XCTAssertEqual(stored.title, capture.title)
+        XCTAssertEqual(stored.text, capture.text)
+        XCTAssertEqual(stored.taskTitle, capture.taskTitle)
+        XCTAssertEqual(stored.createdAt, capture.createdAt)
+        XCTAssertTrue(stored.isFavorite)
+        XCTAssertNil(stored.photoIdentifier)
+        XCTAssertNil(stored.photoDeletedAt)
+        XCTAssertNil(stored.viewedAt)
+        XCTAssertEqual(try vault.original(stored), bytes)
+        try vault.update(stored.id) { $0.title = "עריכה מקומית" }
+        let repeated = try backup.restoreNew(to: vault)
+        XCTAssertEqual(repeated.inserted, 0)
+        XCTAssertEqual(repeated.skipped, 1)
+        XCTAssertEqual(try vault.all().first?.title, "עריכה מקומית")
+    }
+
+    func testRestoreRejectsNonImageBeforeWriting() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let vault = try Vault(rootURL: folder)
+        let bytes = Data("not an image".utf8)
+        let capture = idea(Vault.hash(bytes), title: "test", text: "test", at: Date())
+        let zip = try BackupArchive.zip([
+            ("sources/" + capture.id + "-" + capture.originalName, bytes),
+            ("manifest.json", try JSONEncoder().encode([capture])),
+            ("README.txt", Data("backup".utf8))
+        ])
+        let backup = try VerifiedBackup.inspect(zip)
+        XCTAssertThrowsError(try backup.restoreNew(to: vault))
+        XCTAssertTrue(try vault.all().isEmpty)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
