@@ -20,6 +20,8 @@
 
 - Quality branch: reusable in-memory lexical index, term-frequency weighting, conservative Hebrew prefix matching, curated 16 multilingual concepts, no category-only results, explicit related-match label. Added synthetic benchmark at 100/200/3000/10000 records reporting top-1, recall@5, index and query durations. This fixture tests only simple known-item retrieval, not realistic OCR, open-ended multilingual semantics, phone memory/energy, or classification precision. Benchmark targets are not measured results until CI completes. No private screenshot contents used.
 
+- Rediscovery branch: opt-in local screen with at most six suggestions, explicit shared GitHub/Netlify project links and verified photo dates, old favorites and overdue user-approved tasks. Each suggestion explains its evidence and links to sources. Dismissal is session-only and reversible. No cloud processing, notifications or task creation. Two new unit tests; actual CI and device validation pending.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Deployment and live testing of the optional generative gateway, broader multilingual semantic AI and project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
