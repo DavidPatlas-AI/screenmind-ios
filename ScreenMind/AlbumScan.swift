@@ -391,31 +391,8 @@ extension NativeLibrary {
     }
 
     func deleteOfferedScreenshots() async throws {
-        guard let offer = spaceOffer, !offer.captureIDs.isEmpty else {
-            throw NativeError.message("אין צילום שמחכה לפינוי.")
-        }
-        guard !busy, !scanLoopActive, let vault else {
-            throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")
-        }
-        let allowed = Set(offer.captureIDs)
-        let chosen = captures.filter { allowed.contains($0.id) && $0.photoDeletedAt == nil && !CleanupPlan.isImportant($0) }
-        guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        _ = await PhotoService.permission()
-        let plan = PhotoService.deletionPlan(chosen)
-        guard !plan.present.isEmpty || !plan.alreadyGone.isEmpty else {
-            throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
-        }
-        noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
-        defer { clearActivity(); refresh(); refreshSpaceOffer() }
-        if !plan.present.isEmpty { try await PhotoService.requestDeletion(plan.present.map(\.1)) }
-        let gone = plan.present.map(\.0) + plan.alreadyGone
-        for id in gone {
-            try vault.update(id) { $0.photoDeletedAt = Date() }
-        }
-        SpacePromptStore.remove(Set(gone), vault: vault)
-        if !plan.unresolved.isEmpty {
-            throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
-        }
+        // Never delete Photos assets through the reduced-image scan shortcut.
+        throw NativeError.message("פינוי דורש ייצוא חיצוני מאומת ובדיקת המקור במסך השמירה.")
     }
 
     func catchNewScreenshots() async {
@@ -513,30 +490,8 @@ extension NativeLibrary {
 
     @discardableResult
     func deleteSuggested(ids: Set<String>) async throws -> Bool {
-        guard !busy, !scanLoopActive, let vault, !ids.isEmpty else {
-            throw NativeError.message("אפשר לפנות רק כשאין סריקה או פעולה אחרת באמצע.")
-        }
-        let plan = CleanupPlan.build(captures: active, fingerprints: albumLedger.fingerprints)
-        let allowed = Set(plan.duplicates + plan.junk + plan.textSaved)
-        let chosen = captures.filter { capture in
-            ids.contains(capture.id) && allowed.contains(capture.id) && !CleanupPlan.isImportant(capture)
-        }
-        guard !chosen.isEmpty else { throw NativeError.message("לא נבחרו צילומים שאפשר לפנות.") }
-        _ = await PhotoService.permission()
-        let deletion = PhotoService.deletionPlan(chosen)
-        guard !deletion.present.isEmpty || !deletion.alreadyGone.isEmpty else {
-            throw NativeError.message("אין מזהה של תמונות שאפשר למסור לאפל. הצילומים נשארים בתמונות.")
-        }
-        noteActivity("מבקש מאפל להעביר ל״נמחקו לאחרונה״…")
-        defer { clearActivity(); refresh(); refreshCleanupSummary() }
-        if !deletion.present.isEmpty { try await PhotoService.requestDeletion(deletion.present.map(\.1)) }
-        for id in deletion.present.map(\.0) + deletion.alreadyGone {
-            try vault.update(id) { $0.photoDeletedAt = Date() }
-        }
-        if !deletion.unresolved.isEmpty {
-            throw NativeError.message("חלק מהצילומים נשארו בתמונות. אין להם מזהה שאפשר למסור לאפל.")
-        }
-        return !deletion.present.isEmpty
+        // This legacy entry point cannot bypass the full backup/hash checks.
+        throw NativeError.message("פינוי דורש ייצוא חיצוני מאומת ובדיקת המקור במסך השמירה.")
     }
 
     func refreshCleanupSummary() {
