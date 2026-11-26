@@ -1,4 +1,5 @@
 import SwiftUI
+import NaturalLanguage
 
 struct NativeActionsView: View {
     @EnvironmentObject private var library: NativeLibrary
@@ -199,5 +200,193 @@ struct ProjectTimelineView: View {
         }.background(NativeTheme.canvas)
             .navigationTitle("פרויקט")
             .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+
+// Search is deliberately read-only. Apple sentence embeddings are used only
+// when the OS supplies one for the query language; lexical search always works.
+struct MemorySearchHit: Identifiable, Sendable {
+    enum Match: String, Sendable { case exact, partial, semantic }
+    let id: String
+    let score: Double
+    let match: Match
+}
+struct MemorySearchResponse: Sendable {
+    let hits: [MemorySearchHit]
+    let semanticAvailable: Bool
+    let semanticExamined: Int
+    let total: Int
+}
+actor MemorySearchEngine {
+    static let shared = MemorySearchEngine()
+    private var embeddings: [String: NLEmbedding] = [:]
+    private var vectors: [String: [Double]] = [:]
+    private static let ignored: Set<String> = [
+        "את","של","על","עם","מה","איך","איפה","מתי","לי","אני","כל","מצא","תמצא","צילמתי","שמרתי","האם",
+        "the","a","an","to","of","in","my","me","what","where","find","show","saved","about","did","i",
+        "где","что","мне","найди","как","про","это","мой","мои"
+    ]
+    nonisolated static func normalize(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased().split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
+    }
+    nonisolated static func terms(_ query: String) -> [String] {
+        let all = normalize(query).split(separator: " ").map(String.init)
+        let useful = all.filter { !ignored.contains($0) }
+        return Array(Set(useful.isEmpty ? all : useful)).sorted()
+    }
+    nonisolated static func lexical(query: String, capture: Capture) -> MemorySearchHit? {
+        let terms = terms(query)
+        guard !terms.isEmpty else { return nil }
+        let title = normalize(capture.title + " " + capture.displayTitle)
+        let body = normalize(capture.text)
+        let group = normalize(capture.effectiveCollection)
+        let titleWords = Set(title.split(separator: " ").map(String.init))
+        let bodyWords = Set(body.split(separator: " ").map(String.init))
+        let groupWords = Set(group.split(separator: " ").map(String.init))
+        var score = 0.0, matches = 0
+        for term in terms {
+            if titleWords.contains(term) { score += 4; matches += 1 }
+            else if bodyWords.contains(term) { score += 2; matches += 1 }
+            else if groupWords.contains(term) { score += 1; matches += 1 }
+        }
+        guard matches > 0, matches * 2 >= terms.count else { return nil }
+        let full = matches == terms.count
+        return MemorySearchHit(id: capture.id, score: (full ? 100 : 50) + score / Double(terms.count),
+                               match: full ? .exact : .partial)
+    }
+    nonisolated static func cosine(_ lhs: [Double], _ rhs: [Double]) -> Double? {
+        guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
+        var dot = 0.0, a = 0.0, b = 0.0
+        for index in lhs.indices {
+            dot += lhs[index] * rhs[index]
+            a += lhs[index] * lhs[index]
+            b += rhs[index] * rhs[index]
+        }
+        guard a > 0, b > 0 else { return nil }
+        let score = dot / (sqrt(a) * sqrt(b))
+        return score.isFinite ? score : nil
+    }
+    private func vector(_ text: String, language: NLLanguage, model: NLEmbedding) -> [Double]? {
+        let key = language.rawValue + "\u{001F}" + text
+        if let cached = vectors[key] { return cached }
+        guard let value = model.vector(for: text), !value.isEmpty else { return nil }
+        if vectors.count >= 500 { vectors.removeAll(keepingCapacity: true) }
+        vectors[key] = value
+        return value
+    }
+    func search(query: String, captures: [Capture]) -> MemorySearchResponse {
+        let active = captures.filter { !$0.isArchived }
+        let cleaned = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+        var hits: [MemorySearchHit] = []
+        guard !cleaned.isEmpty else {
+            return MemorySearchResponse(hits: [], semanticAvailable: false, semanticExamined: 0, total: active.count)
+        }
+        for capture in active {
+            if Task.isCancelled { break }
+            if let hit = Self.lexical(query: cleaned, capture: capture) { hits.append(hit) }
+        }
+        var available = false
+        var examined = 0
+        if !Task.isCancelled, let language = NLLanguageRecognizer.dominantLanguage(for: cleaned) {
+            let key = language.rawValue
+            if let model = embeddings[key] ?? NLEmbedding.sentenceEmbedding(for: language) {
+                embeddings[key] = model
+                if let queryVector = vector(cleaned, language: language, model: model) {
+                    available = true
+                    let exactIDs = Set(hits.filter { $0.match == .exact }.map(\.id))
+                    let recent = active.sorted {
+                        $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate > $1.sourceDate
+                    }
+                    // Bounded on-device work for older iPhones. No claim of a full
+                    // semantic index; exact/partial matching still covers all captures.
+                    for capture in recent.prefix(250) {
+                        if Task.isCancelled { break }
+                        if exactIDs.contains(capture.id) { continue }
+                        let sample = String((capture.title + "\n" + capture.text).prefix(600))
+                        guard NLLanguageRecognizer.dominantLanguage(for: sample) == language,
+                              let value = vector(sample, language: language, model: model) else { continue }
+                        examined += 1
+                        if let similarity = Self.cosine(queryVector, value), similarity >= 0.72 {
+                            hits.append(MemorySearchHit(id: capture.id, score: similarity * 10, match: .semantic))
+                        }
+                    }
+                }
+            }
+        }
+        var best: [String: MemorySearchHit] = [:]
+        for hit in hits where hit.score > (best[hit.id]?.score ?? -1) { best[hit.id] = hit }
+        let ranked = best.values.sorted {
+            $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score
+        }
+        return MemorySearchResponse(hits: Array(ranked.prefix(60)), semanticAvailable: available,
+                                    semanticExamined: examined, total: active.count)
+    }
+}
+
+struct MemorySearchView: View {
+    @EnvironmentObject private var library: NativeLibrary
+    let open: (Capture) -> Void
+    @State private var query = ""
+    @State private var response: MemorySearchResponse?
+    @State private var running = false
+    @State private var revision = 0
+    private struct Request: Hashable {
+        let query: String
+        let revision: Int
+    }
+    var body: some View {
+        List {
+            Section {
+                Text("חפש בזיכרון שלך").font(.title2.bold())
+                Text("אפשר לכתוב שאלה או כמה מילים. התוצאות מקושרות לצילום המקורי.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                if running { ProgressView("מחפש במכשיר…") }
+                if let response, !running {
+                    if response.semanticAvailable {
+                        Text("חיפוש מילים ב־\(response.total) מקורות; דמיון סמנטי נבדק ב־\(response.semanticExamined) מקורות נוספים, מתוך עד 250 אחרונים.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("חיפוש מקומי לפי מילים ב־\(response.total) מקורות. מודל סמנטי אינו זמין לשאלה זו.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let response, !running {
+                if response.hits.isEmpty {
+                    ContentUnavailableView("לא נמצאה התאמה", systemImage: "magnifyingglass",
+                                           description: Text("נסה שם, מילה אחרת או ביטוי קצר. צילומים שלא זוהה בהם טקסט עלולים שלא להופיע."))
+                }
+                ForEach(response.hits) { hit in
+                    if let capture = library.capture(hit.id) {
+                        Button { open(capture) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label(hit.match == .semantic ? "דמיון במשמעות" : hit.match == .exact ? "התאמת מילות חיפוש" : "התאמה חלקית",
+                                      systemImage: hit.match == .semantic ? "sparkles" : "magnifyingglass")
+                                    .font(.caption).foregroundStyle(NativeTheme.accent)
+                                Text(capture.displayTitle).font(.headline).foregroundStyle(.primary)
+                                Text(capture.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .navigationTitle("חיפוש חכם")
+        .searchable(text: $query, prompt: "מה אני רוצה למצוא?")
+        .onChange(of: library.captures) { _, _ in revision += 1 }
+        .task(id: Request(query: query, revision: revision)) {
+            response = nil
+            let input = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if input.isEmpty { running = false; return }
+            running = true
+            do { try await Task.sleep(nanoseconds: 350_000_000) }
+            catch { return }
+            let result = await MemorySearchEngine.shared.search(query: input, captures: library.captures)
+            guard !Task.isCancelled else { return }
+            response = result
+            running = false
+        }
     }
 }
