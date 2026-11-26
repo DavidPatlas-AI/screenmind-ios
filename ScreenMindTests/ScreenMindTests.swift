@@ -647,6 +647,37 @@ import UIKit
             XCTAssertLessThanOrEqual(placement.center.y + placement.height / 2, scene.contentHeight + 0.001, file: file, line: line)
         }
     }
+    func testVerifiedBackupChecksHashesAndConflicts() throws {
+        let bytes = Data("synthetic source bytes".utf8)
+        let id = Vault.hash(bytes)
+        var capture = idea(id, title: "מקור", text: "טקסט", at: Date(timeIntervalSince1970: 1234))
+        capture.isFavorite = true
+        let files: [(String, Data)] = [
+            ("sources/" + id + "-" + capture.originalName, bytes),
+            ("manifest.json", try JSONEncoder().encode([capture])),
+            ("README.txt", Data("Test backup".utf8))
+        ]
+        let zip = try BackupArchive.zip(files)
+        let checked = try VerifiedBackup.inspect(zip)
+        XCTAssertEqual(checked.captures, [capture])
+        XCTAssertEqual(checked.sourceBytes, bytes.count)
+        XCTAssertEqual(checked.compare(with: []).newCount, 1)
+        XCTAssertEqual(checked.compare(with: [capture]).identicalCount, 1)
+        capture.title = "כותרת חדשה"
+        XCTAssertEqual(checked.compare(with: [capture]).conflictCount, 1)
+        var corrupt = zip
+        corrupt[corrupt.count-22] = 0
+        XCTAssertThrowsError(try VerifiedBackup.inspect(corrupt))
+        XCTAssertThrowsError(try VerifiedBackup.inspect(Data(zip.dropLast())))
+        var wrong = files
+        wrong[0].1 = Data("changed content".utf8)
+        XCTAssertThrowsError(try VerifiedBackup.inspect(BackupArchive.zip(wrong)))
+        XCTAssertThrowsError(try VerifiedBackup.inspect(BackupArchive.zip(files + [files[0]])))
+        var unknown = files
+        unknown[0].0 = "../unexpected"
+        XCTAssertThrowsError(try VerifiedBackup.inspect(BackupArchive.zip(unknown)))
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
