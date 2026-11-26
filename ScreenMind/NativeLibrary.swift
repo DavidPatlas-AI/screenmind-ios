@@ -41,6 +41,24 @@ struct ImportReport: Identifiable, Sendable {
     var startGate = false
     private(set) var vault: Vault?
     private let thumbnails = NSCache<NSString, UIImage>()
+    private var didRestorePhotoDates = false
+    private func restorePhotoDates() async {
+        guard !didRestorePhotoDates, PhotoService.hasAccess, let vault else { return }
+        didRestorePhotoDates = true
+        let missing = captures.filter { $0.photoCreatedAt == nil && $0.photoIdentifier != nil }
+        let ids = missing.compactMap(\.photoIdentifier)
+        guard !ids.isEmpty else { return }
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+        var dates: [String: Date] = [:]
+        assets.enumerateObjects { asset, _, _ in dates[asset.localIdentifier] = asset.creationDate }
+        for (index, capture) in missing.enumerated() {
+            guard let identifier = capture.photoIdentifier, let date = dates[identifier] else { continue }
+            do { _ = try vault.update(capture.id) { $0.photoCreatedAt = date } }
+            catch { self.error = error.localizedDescription }
+            if index.isMultiple(of: 25) { await Task.yield() }
+        }
+        refresh()
+    }
     var active: [Capture] { captures.filter { !$0.isArchived } }
     var pending: [Capture] { active.filter(\.needsReview) }
     var collections: [String] { Array(Set(active.map(\.effectiveCollection))).sorted() }
@@ -131,6 +149,7 @@ struct ImportReport: Identifiable, Sendable {
         }
         #endif
         refresh()
+        await restorePhotoDates()
         guard let vault else { return }
         if !busy && albumScan.status != .running {
             let items = captures.filter { $0.textStatus == "pending" }.prefix(20)
@@ -212,7 +231,7 @@ struct ImportReport: Identifiable, Sendable {
                     name = "Screenshot." + ext
                 }
                 let existed = captures.contains { $0.id == Vault.hash(bytes) }
-                let capture = try vault.save(data: bytes, name: name, photoIdentifier: item.itemIdentifier, source: "picker")
+                let capture = try vault.save(data: bytes, name: name, photoIdentifier: item.itemIdentifier, source: "picker", photoCreationDate: item.itemIdentifier.flatMap { PhotoService.asset(id: $0)?.creationDate })
                 if capture.needsReview && !reviewIDs.contains(capture.id) { reviewIDs.append(capture.id) }
                 refresh()
                 if existed { duplicates += 1 } else { saved += 1 }
@@ -249,7 +268,7 @@ struct ImportReport: Identifiable, Sendable {
                 do {
                     let (bytes, name) = try await PhotoService.original(asset)
                     let existed = captures.contains { $0.id == Vault.hash(bytes) }
-                    let capture = try vault.save(data: bytes, name: name, photoIdentifier: identifier, source: "scan")
+                    let capture = try vault.save(data: bytes, name: name, photoIdentifier: identifier, source: "scan", photoCreationDate: asset.creationDate)
                     if capture.needsReview && !reviewIDs.contains(capture.id) { reviewIDs.append(capture.id) }
                     refresh()
                     if existed { duplicates += 1 } else { saved += 1 }
