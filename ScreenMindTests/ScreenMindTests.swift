@@ -146,7 +146,7 @@ import UIKit
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let homeTable = idea("home-table", title: "שולחן אלון", text: "מידות פסטה", collection: "הבית", at: now)
         let homeLamp = idea("home-lamp", title: "מנורה", text: "אור חם", collection: "הבית", at: now.addingTimeInterval(10))
-        let pastaA = idea("pasta-a", title: "ספק פסטה", text: "מחיר", intent: .act, at: now.addingTimeInterval(20))
+        let pastaA = idea("pasta-a", title: "ספק פסטה", text: "מחיר מתכון", intent: .act, at: now.addingTimeInterval(20))
         let pastaB = idea("pasta-b", title: "פסטה סדנה", text: "מתכון", intent: .act, at: now.addingTimeInterval(30))
         let supplier = idea("supplier", title: "ספק אחר", text: "טלפון", at: now.addingTimeInterval(40))
         let extra = idea("extra", title: "ספק נוסף", text: "טלפון", at: now.addingTimeInterval(45))
@@ -160,13 +160,34 @@ import UIKit
         XCTAssertEqual(graph.childIDs[home.id]?.count, 2)
         XCTAssertFalse(graph.nodes.values.contains { $0.captureID == archived.id })
 
-        let pasta = try XCTUnwrap(graph.node("topic:word:פסטה"))
+        let pasta = try XCTUnwrap(graph.node("topic:smart:food"))
         XCTAssertEqual(Set(graph.childIDs[pasta.id] ?? []), Set(["item:pasta-a", "item:pasta-b"]))
-        XCTAssertEqual(Set(graph.childIDs["topic:word:ספק"] ?? []), Set(["item:supplier", "item:extra"]))
+        XCTAssertEqual(Set(graph.childIDs["topic:smart:work"] ?? []), Set(["item:supplier", "item:extra"]))
         XCTAssertEqual(graph.node(BrainGraph.openTopicID)?.title, "רעיונות פתוחים")
         XCTAssertEqual(graph.childIDs[BrainGraph.openTopicID], ["item:leftover"])
         XCTAssertTrue(graph.links.contains { $0.label == "פסטה" && Set([$0.fromID, $0.toID]) == Set([home.id, pasta.id]) })
         XCTAssertTrue(graph.links.allSatisfy { degree($0.fromID, graph) <= 3 && degree($0.toID, graph) <= 3 })
+    }
+    func testSmartTopicsAvoidChromeAndSupportSeveralLanguages() {
+        XCTAssertNil(SmartTopic.classify(title: "add audio לכל שר שי", text: "private aviv"))
+        XCTAssertEqual(SmartTopic.classify(title: "מדריך", text: "SwiftUI GitHub Python"), .technology)
+        XCTAssertEqual(SmartTopic.classify(title: "Оплата", text: "квитанция"), .finance)
+        XCTAssertEqual(SmartTopic.classify(title: "Receta", text: "ingredientes"), .food)
+        XCTAssertEqual(SmartTopic.classify(title: "Programmation", text: "GitHub"), .technology)
+        XCTAssertEqual(SmartTopic.classify(title: "برمجة", text: "ذكاء اصطناعي"), .technology)
+        XCTAssertNil(SmartTopic.classify(title: "GitHub", text: "hotel"))
+    }
+    func testAutoGroupingNeverApprovesDeletionOrOverridesManualCollection() {
+        let now = Date()
+        var capture = idea("smart", title: "add", text: "GitHub SwiftUI programming guide", reviewed: nil, at: now)
+        XCTAssertEqual(capture.effectiveCollection, "טכנולוגיה ופיתוח")
+        XCTAssertTrue(capture.needsReview)
+        XCTAssertEqual(capture.displayTitle, "GitHub SwiftUI programming guide")
+        capture.collection = "הפרויקט שלי"
+        XCTAssertEqual(capture.effectiveCollection, "הפרויקט שלי")
+        capture.photoCreatedAt = now.addingTimeInterval(-86400)
+        XCTAssertEqual(capture.sourceDate, capture.photoCreatedAt!)
+        XCTAssertEqual(capture.createdAt, now)
     }
     func testBrainMomentsAreOpenTasksDueTodayOrEarlier() {
         let now = Date(timeIntervalSince1970: 1_763_769_600)
