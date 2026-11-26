@@ -177,6 +177,21 @@ import UIKit
         XCTAssertEqual(SmartTopic.classify(title: "برمجة", text: "ذكاء اصطناعي"), .technology)
         XCTAssertNil(SmartTopic.classify(title: "GitHub", text: "hotel"))
     }
+    func testLegacyCaptureWithoutPhotoDatePreservesUserData() throws {
+        var capture = idea("legacy", title: "כותרת אישית", text: "תוכן", collection: "פרויקט שלי", at: Date())
+        capture.isFavorite = true
+        let encoded = try JSONEncoder().encode(capture)
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        old.removeValue(forKey: "photoCreatedAt")
+        let decoded = try JSONDecoder().decode(Capture.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertEqual(decoded.id, capture.id)
+        XCTAssertEqual(decoded.title, capture.title)
+        XCTAssertEqual(decoded.collection, capture.collection)
+        XCTAssertTrue(decoded.isFavorite)
+        XCTAssertEqual(decoded.reviewedAt, capture.reviewedAt)
+        XCTAssertNil(decoded.photoCreatedAt)
+        XCTAssertEqual(decoded.sourceDate, decoded.createdAt)
+    }
     func testProjectDiscoveryUsesExplicitRepeatedIdentityAndChronology() {
         let now = Date(timeIntervalSince1970: 1_763_769_600)
         var newer = idea("new", title: "Build", text: "https://github.com/example/my-app/issues/7", at: now)
