@@ -171,6 +171,12 @@ struct ProjectTimelineView: View {
                     Label("למקורות ללא תאריך צילום מוצג תאריך הייבוא.", systemImage: "info.circle")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                NavigationLink {
+                    ProjectStoryView(identity: cluster.identity, open: open)
+                } label: {
+                    Label("צור כתבה מהפרויקט", systemImage: "book.pages")
+                        .frame(maxWidth: .infinity)
+                }.buttonStyle(.borderedProminent)
                 ShareLink(item: cluster.brief) {
                     Label("ייצא טיוטת מקורות", systemImage: "square.and.arrow.up")
                 }.buttonStyle(.borderedProminent)
