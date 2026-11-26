@@ -16,6 +16,8 @@
 
 - AI branch: optional private server for OpenAI Responses structured output, text-only previews of up to 12 sources, 12 output-language options, explicit consent and batch acceptance. AI title, summary, topic, and suggested task are kept separately from OCR and user corrections. Source digest prevents stale analysis. Gateway is not deployed; no live provider call performed. See ai-gateway/README.md for security and setup.
 
+- Release safety branch: legacy reduced-image deletion shortcuts fail closed. Album suggestions route to existing verified-backup workflow, and the home prompt has no direct deletion action. Updated UI tests cover the blocked deletion. Added in-place upgrade checklist; no full-library backup or restore implementation yet.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Deployment and live testing of the optional generative gateway, broader multilingual semantic AI and project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
