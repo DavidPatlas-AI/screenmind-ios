@@ -7,7 +7,7 @@ struct AlbumCleanupView: View {
     @State private var selected: Set<String> = []
     @State private var markdown = ""
     @State private var plain = ""
-    @State private var confirm = false
+    @State private var verifiedSelection: CaptureSelection?
     @State private var error: String?
     @State private var completed = false
     @State private var alreadyGone = false
@@ -17,12 +17,12 @@ struct AlbumCleanupView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(completed ? "הטקסט נשאר כאן." : "אפשר לפנות, בלי לאבד את מה שקראנו.").font(.title3.weight(.semibold))
+                        Text(completed ? "הטקסט נשאר כאן." : "מועמדים לבדיקה ולגיבוי").font(.title3.weight(.semibold))
                         Text(completed
                              ? (alreadyGone
                                 ? "הצילומים האלה כבר לא היו בתמונות. ההערות נשארו ב־ScreenMind."
                                 : "הצילומים שנבחרו עברו ל״נמחקו לאחרונה״ ל־30 יום. אפשר לשחזר אותם משם. ההערות נשארו ב־ScreenMind.")
-                             : "מועדפים ומשימות פתוחות לא מופיעים. כלום לא נמחק לפני האישור שלך, ואפל מבקשת אישור נוסף. אם iCloud Photos פעיל, המחיקה מסתנכרנת.")
+                             : "מועדפים ומשימות פתוחות לא מופיעים. זיהוי כפילות אינו הוכחת גיבוי. מקור מוקטן אינו מספיק למחיקה; נדרש עותק חיצוני מאומת וזהות מלאה לצילום המקורי.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                     HStack(spacing: 12) {
@@ -33,9 +33,9 @@ struct AlbumCleanupView: View {
                     }
                     if let error { Text(error).foregroundStyle(.red) }
                 }
-                category(title: "כפילויות", detail: "צילום כמעט זהה לאחר. נשמר זה עם יותר טקסט.", ids: plan.duplicates, select: "בחר את כל הכפילויות", clear: "נקה את הכפילויות")
-                category(title: "בלי טקסט מועיל", detail: "אין כאן משפט שאפשר לחזור אליו.", ids: plan.junk, select: "בחר את כל מה שבלי טקסט מועיל", clear: "נקה את מה שבלי טקסט")
-                category(title: "הטקסט כבר שמור", detail: "הטקסט בארכיון. אפשר להשאיר את הצילום אם הוא עדיין חשוב.", ids: plan.textSaved, select: "בחר את כל מה שהטקסט שלו שמור", clear: "נקה את מה שהטקסט שלו שמור")
+                category(title: "כפילויות", detail: "צילום שנראה דומה לאחר. בדוק את המקורות לפני החלטה.", ids: plan.duplicates, select: "בחר את כל הכפילויות", clear: "נקה את הכפילויות")
+                category(title: "בלי טקסט מועיל", detail: "לא נמצא טקסט מועיל; עדיין ייתכן שהתמונה חשובה.", ids: plan.junk, select: "בחר את כל מה שבלי טקסט מועיל", clear: "נקה את מה שבלי טקסט")
+                category(title: "הטקסט כבר שמור", detail: "הטקסט בארכיון, אבל הוא אינו תחליף לתמונה המקורית.", ids: plan.textSaved, select: "בחר את כל מה שהטקסט שלו שמור", clear: "נקה את מה שהטקסט שלו שמור")
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -44,32 +44,23 @@ struct AlbumCleanupView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("סיום") { dismiss() }.disabled(library.busy) } }
             .safeAreaInset(edge: .bottom) {
-                Button { confirm = true } label: {
-                    Label("מחק את הבחירה מתמונות", systemImage: "trash")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .disabled(selected.isEmpty || library.busy || completed)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
+                VStack(spacing: 6) {
+                    Button {
+                        verifiedSelection = CaptureSelection(ids: selected)
+                    } label: {
+                        Label("ייצא ובדוק עותק לפני פינוי", systemImage: "checkmark.shield")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.borderedProminent)
+                        .disabled(selected.isEmpty || selected.count > 20 || library.busy)
+                    Text("בחר עד 20 צילומים. אין מחיקה מהמסך הזה.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(12).background(.ultraThinMaterial)
             }
-            .confirmationDialog("למחוק את הצילומים שנבחרו?", isPresented: $confirm, titleVisibility: .visible) {
-                Button("העבר לנמחקו לאחרונה", role: .destructive) {
-                    Task {
-                        do {
-                            alreadyGone = try await library.deleteSuggested(ids: selected) == false
-                            completed = true
-                            selected = []
-                            error = nil
-                            plan = CleanupPlan.build(captures: library.active, fingerprints: library.albumLedger.fingerprints)
-                        } catch { self.error = error.localizedDescription }
-                    }
-                }
-                Button("להשאיר בתמונות") { confirm = false }
-            } message: {
-                Text("\(selected.count) צילומים. הטקסט וההערות נשארים ב־ScreenMind. ב״תמונות״ הם עוברים ל״נמחקו לאחרונה״ ל־30 יום.")
+            .sheet(item: $verifiedSelection, onDismiss: {
+                selected = []
+                plan = CleanupPlan.build(captures: library.active, fingerprints: library.albumLedger.fingerprints)
+            }) { selection in
+                CleanupView(ids: selection.ids)
             }
             .onAppear {
                 plan = CleanupPlan.build(captures: library.active, fingerprints: library.albumLedger.fingerprints)
