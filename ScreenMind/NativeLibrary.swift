@@ -43,7 +43,9 @@ struct ImportReport: Identifiable, Sendable {
     private let thumbnails = NSCache<NSString, UIImage>()
     var active: [Capture] { captures.filter { !$0.isArchived } }
     var pending: [Capture] { active.filter(\.needsReview) }
-    var collections: [String] { Array(Set(active.map(\.collection))).sorted() }
+    var collections: [String] { Array(Set(active.map(\.effectiveCollection))).sorted() }
+    var textAttentionCount: Int { active.filter(\.needsTextAttention).count }
+    var recognizedCount: Int { active.filter { $0.textStatus == "complete" || $0.textStatus == "reread" }.count }
 
     init() {
         thumbnails.countLimit = 60
