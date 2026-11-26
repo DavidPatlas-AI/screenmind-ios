@@ -154,7 +154,7 @@ final class ScreenMindUITests: XCTestCase {
         snap("09-album-paused")
     }
 
-    func testCleanupAsksBeforeMovingScreenshotsToRecentlyDeleted() {
+    func testCleanupRequiresVerifiedBackupBeforeDeletion() {
         let app = launch(["-UITestSeed"])
         let open = app.buttons["בדוק מה אפשר לפנות"]
         XCTAssertTrue(open.waitForExistence(timeout: 8))
@@ -173,26 +173,25 @@ final class ScreenMindUITests: XCTestCase {
         selectJunk.tap()
         let chosen = app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS %@)", "נבחר", "לא נבחר")).firstMatch
         XCTAssertTrue(chosen.waitForExistence(timeout: 5))
-        app.buttons["מחק את הבחירה מתמונות"].tap()
-        XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
-        snap("10-cleanup-confirm")
-        app.buttons["להשאיר בתמונות"].tap()
-        XCTAssertTrue(app.staticTexts["בלי טקסט מועיל"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["מחק את הבחירה מתמונות"].exists)
+        app.buttons["ייצא ובדוק עותק לפני פינוי"].tap()
+        XCTAssertTrue(app.navigationBars["שמירה ופינוי"].waitForExistence(timeout: 5))
+        let deletion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "בקש מחיקה")).firstMatch
+        XCTAssertTrue(deletion.exists)
+        XCTAssertFalse(deletion.isEnabled)
+        snap("10-cleanup-verified-only")
     }
 
-    func testNewScreenshotCardAsksBeforeDeleting() {
+    func testNewScreenshotCardDoesNotOfferDirectDeletion() {
         let app = launch(["-UITestReset", "-UITestSpaceOffer"])
         let options = app.buttons["פינוי תמונות (רשות)"]
         for _ in 0..<5 where !options.isHittable { app.swipeUp() }
         XCTAssertTrue(options.waitForExistence(timeout: 8))
         options.tap()
         XCTAssertTrue(app.staticTexts["2 צילומים חדשים נשמרו במוח."].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["למחוק אותם כדי לפנות כ־3.4 MB?"].exists)
-        snap("11-space-card")
-        app.buttons["מחק מהתמונות"].tap()
-        XCTAssertTrue(app.buttons["העבר לנמחקו לאחרונה"].waitForExistence(timeout: 5))
-        snap("12-space-confirm")
-        app.buttons["להשאיר בתמונות"].tap()
+        XCTAssertFalse(app.buttons["מחק מהתמונות"].exists)
+        XCTAssertTrue(app.staticTexts["המקור נשאר בתמונות. אפשר לעיין בצילומים בלי למחוק אותם."].exists)
+        snap("11-space-card-safe")
         app.buttons["השאר"].tap()
         let headline = app.staticTexts["2 צילומים חדשים נשמרו במוח."]
         XCTAssertTrue(headline.waitForNonExistence(timeout: 5))
