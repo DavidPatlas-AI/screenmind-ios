@@ -734,6 +734,40 @@ import UIKit
         XCTAssertTrue(try vault.all().isEmpty)
     }
 
+    func testLibraryBackupMultiplePartsRoundTripAndCorruption() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = try Vault(rootURL: folder.appendingPathComponent("source"))
+        let destination = try Vault(rootURL: folder.appendingPathComponent("destination"))
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
+        for i in 0..<23 {
+            let bytes = renderer.pngData { ctx in
+                UIColor(red: CGFloat(i+1)/24, green: 0.3, blue: 0.5, alpha: 1).setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+            }
+            let capture = try source.save(data: bytes, name: "sample-\(i).png", photoIdentifier: nil, source: "test")
+            try source.update(capture.id) { $0.title = "מקור \(i)"; $0.isFavorite = true }
+        }
+        let report = try LibraryBackup.export(vault: source, to: folder)
+        XCTAssertEqual(report.count, 23)
+        XCTAssertEqual(report.parts, 2)
+        let backup = folder.appendingPathComponent(report.folder)
+        let index = try LibraryBackup.inspect(backup)
+        XCTAssertEqual(index.count, 23)
+        let restored = try LibraryBackup.restore(backup, to: destination)
+        XCTAssertEqual(restored.inserted, 23)
+        XCTAssertEqual(restored.failed, 0)
+        XCTAssertEqual(try destination.all().count, 23)
+        XCTAssertTrue(try destination.all().allSatisfy { $0.isFavorite })
+        XCTAssertEqual(try LibraryBackup.restore(backup, to: destination).skipped, 23)
+        let empty = try Vault(rootURL: folder.appendingPathComponent("empty"))
+        let last = backup.appendingPathComponent(try XCTUnwrap(index.parts.last).name)
+        try Data("corrupt".utf8).write(to: last)
+        XCTAssertThrowsError(try LibraryBackup.restore(backup, to: empty))
+        XCTAssertTrue(try empty.all().isEmpty)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
