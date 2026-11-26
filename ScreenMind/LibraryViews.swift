@@ -210,6 +210,7 @@ struct NativeSettingsView: View {
                     if let url = URL(string: UIApplication.openSettingsURLString) { Link("פתח הגדרות הרשאה", destination: url) }
                 }
                 Section("לפני שמפנים") {
+                    NavigationLink { BackupInspectionView() } label: { Label("בדיקת קובץ גיבוי", systemImage: "checkmark.shield") }
                     Text("הארכיון המקומי עלול להימחק בהסרת האפליקציה. ייצא עותק נוסף ל־Files, ובדוק שאתה יכול לפתוח את המקורות.")
                     Text("מחיקה מתמונות עשויה להסתנכרן לכל המכשירים עם iCloud Photos. היא אינה מבטיחה פינוי נפח מיידי.")
                         .foregroundStyle(.secondary)
