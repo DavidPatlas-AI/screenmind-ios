@@ -74,7 +74,7 @@ final class Vault: @unchecked Sendable {
         }
         return capture
     }
-    @discardableResult func save(data: Data, name: String, photoIdentifier: String?, source: String, photoCreationDate: Date? = nil) throws -> Capture {
+    static func validateSourceImage(_ data: Data) throws {
         guard !data.isEmpty, data.count <= 24 * 1024 * 1024,
               let image = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(image) == 1,
               let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
@@ -84,6 +84,52 @@ final class Vault: @unchecked Sendable {
               width * height <= 32_000_000 else {
             throw NativeError.message("בחר תמונה יחידה תקינה, עד 24MB. תמונות מונפשות אינן נתמכות.")
         }
+    }
+
+    // Add only missing records. The coordinator serializes against other
+    // cooperating record writers. Never replace an existing record.
+    func restoreNewCapture(_ capture: Capture, data: Data) throws -> Bool {
+        guard capture.id.utf8.count == 64,
+              capture.id.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+              Self.hash(data) == capture.id else {
+            throw NativeError.message("מקור הגיבוי אינו תקין.")
+        }
+        try Self.validateSourceImage(data)
+        let url = try recordURL(capture.id)
+        let imageURL = originalURL(capture)
+        var restored = capture
+        // A PhotoKit identifier from a backup is not proof of current ownership.
+        restored.photoIdentifier = nil
+        restored.photoDeletedAt = nil
+        restored.viewedAt = nil
+        let metadata = try JSONEncoder().encode(restored)
+        var coordinationError: NSError?
+        var result: Result<Bool, Error>?
+        NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: .forMerging, error: &coordinationError) { coordinated in
+            result = Result {
+                if FileManager.default.fileExists(atPath: coordinated.path) { return false }
+                if FileManager.default.fileExists(atPath: imageURL.path) {
+                    guard Self.hash(try Data(contentsOf: imageURL)) == capture.id else {
+                        throw NativeError.message("נמצא מקור מקומי שאינו תואם לגיבוי.")
+                    }
+                } else {
+                    try data.write(to: imageURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                }
+                guard Self.hash(try Data(contentsOf: imageURL)) == capture.id else {
+                    throw NativeError.message("אימות המקור המשוחזר נכשל.")
+                }
+                // Commit the record last. A crash can leave an orphan image,
+                // but cannot publish a record before its source exists.
+                try metadata.write(to: coordinated, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                return true
+            }
+        }
+        if let error = coordinationError { throw error }
+        guard let result else { throw NativeError.message("השחזור לא הושלם.") }
+        return try result.get()
+    }
+    @discardableResult func save(data: Data, name: String, photoIdentifier: String?, source: String, photoCreationDate: Date? = nil) throws -> Capture {
+        try Self.validateSourceImage(data)
         let id = Self.hash(data)
         let original = originals.appendingPathComponent(id + ".original")
         try data.write(to: original, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
