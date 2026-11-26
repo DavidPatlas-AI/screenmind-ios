@@ -212,6 +212,12 @@ struct NativeHome: View {
                             }.padding(12).frame(maxWidth: .infinity)
                                 .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
                         }.buttonStyle(.plain)
+                        NavigationLink {
+                            AIEnrichmentView()
+                        } label: {
+                            Label("ניתוח תוכן מתקדם ב־AI (רשות)", systemImage: "sparkles")
+                                .font(.subheadline.weight(.semibold))
+                        }.buttonStyle(.bordered)
                         Button { tab = 3 } label: {
                             Label("פתח את הנושאים שלך", systemImage: "folder.fill")
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -280,7 +286,7 @@ struct NativeHome: View {
                     }.padding(16)
                         .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
                 }
-                Label("הזיהוי והמיון הבסיסי מתבצעים במכשיר. אין שליחה לספק AI.", systemImage: "lock.shield")
+                Label("הזיהוי והמיון הבסיסי במכשיר. ניתוח AI חיצוני רק לאחר אישור מפורש.", systemImage: "lock.shield")
                     .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
             }.padding(20)
         }.background(NativeTheme.canvas)
