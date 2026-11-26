@@ -41,6 +41,21 @@ struct CaptureDetail: View {
                             }
                         }
                     }
+                    if let analysis = capture.currentAIAnalysis {
+                        Section("ניתוח AI — הצעה") {
+                            Text(analysis.title).font(.headline)
+                            Text(analysis.summary)
+                            if !analysis.suggestedTask.isEmpty {
+                                Label(analysis.suggestedTask, systemImage: "checklist")
+                                    .font(.subheadline)
+                            }
+                            Text("נוצר באמצעות AI, ייתכנו טעויות. המקור נשאר ללא שינוי.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("הסר את ניתוח ה־AI", role: .destructive) {
+                                library.update(capture.id) { $0.aiAnalysis = nil }
+                            }.disabled(library.busy)
+                        }
+                    }
                     Section {
                         TextField("כותרת קצרה", text: $title, axis: .vertical).lineLimit(1...3)
                         TextEditor(text: $text).frame(minHeight: 120).accessibilityLabel("הטקסט והתיאור")
