@@ -89,7 +89,7 @@ enum SmartTopic: String, CaseIterable, Sendable {
             .lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
     }
     private static let vocabulary: [SmartTopic: [[String]]] =
-        Dictionary(uniqueKeysWithValues: allCases.map { topic in (topic, topic.keywords.map { words($0) }) })
+        Dictionary(uniqueKeysWithValues: allCases.map { topic in (topic, Array(Set(topic.keywords.map { words($0) }))) })
     // Bounded in-memory cache: exact bounded input is the key, so edits invalidate
     // the result. NSCache is thread-safe and evicts under memory pressure.
     private static let cache: NSCache<NSString, NSString> = {
