@@ -1,6 +1,7 @@
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { createBedrockProvider } from "./bedrock.mjs";
+import { createGeminiProvider } from "./gemini.mjs";
 import { createPilotGuard } from "./pilot-guard.mjs";
 
 const { OPENAI_API_KEY, SCREENMIND_GATEWAY_TOKEN, OPENAI_MODEL = "gpt-4o-mini" } = process.env;
@@ -8,12 +9,13 @@ const providerName=process.env.SCREENMIND_PROVIDER || "disabled";
 if (!SCREENMIND_GATEWAY_TOKEN || SCREENMIND_GATEWAY_TOKEN.length < 32) {
   throw new Error("Set a random SCREENMIND_GATEWAY_TOKEN (at least 32 characters).");
 }
-if (!["openai","bedrock","disabled"].includes(providerName)) throw new Error("Unknown provider.");
+if (!["openai","bedrock","gemini","disabled"].includes(providerName)) throw new Error("Unknown provider.");
 if (providerName==="openai" && (!OPENAI_API_KEY || process.env.SCREENMIND_ALLOW_LIVE_AI!=="yes")) {
   throw new Error("OpenAI requires server credentials and explicit live AI opt-in.");
 }
 const pilotGuard=providerName==="disabled" ? null : createPilotGuard(process.env.SCREENMIND_PILOT_LEDGER);
 const bedrock=providerName==="bedrock" ? await createBedrockProvider() : null;
+const gemini=providerName==="gemini" ? createGeminiProvider() : null;
 const token = Buffer.from("Bearer " + SCREENMIND_GATEWAY_TOKEN);
 const topics = ["technology","learning","finance","shopping","work","media","travel","food","documents","unknown"];
 const languages = ["he","en","ru","es","fr","de","ar","it","pt","ja","zh","hi"];
@@ -82,6 +84,8 @@ const server = http.createServer(async (req,res) => {
     let result;
     if (bedrock) {
       result=await bedrock({body,schema,instructions,signal:AbortSignal.timeout(55000)});
+    } else if (gemini) {
+      result=await gemini({body,schema,instructions,signal:AbortSignal.timeout(55000)});
     } else {
       const response = await fetch("https://api.openai.com/v1/responses",{
         method:"POST", headers:{"authorization":"Bearer "+OPENAI_API_KEY,"content-type":"application/json"},
