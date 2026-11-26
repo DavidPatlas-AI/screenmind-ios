@@ -5,6 +5,7 @@ struct BackupInspectionView: View {
     @EnvironmentObject private var library: NativeLibrary
     @State private var choosing = false
     @State private var checking = false
+    @State private var confirming = false
     @State private var verified: VerifiedBackup?
     @State private var message: String?
 
@@ -25,8 +26,10 @@ struct BackupInspectionView: View {
                     LabeledContent("רשומות זהות", value: "\(comparison.identicalCount)")
                     LabeledContent("רשומות עם הבדלים", value: "\(comparison.conflictCount)")
                     LabeledContent("נפח המקורות", value: ByteCountFormatter.string(fromByteCount: Int64(verified.sourceBytes), countStyle: .file))
-                    Text("בדיקת שלמות אינה אימות מקור מול התמונות או חתימה דיגיטלית. בגרסה זו עדיין לא משחזרים את הקובץ ולא מחליפים רשומות.")
+                    Text("בדיקת שלמות אינה אימות מול התמונות או חתימה דיגיטלית. השחזור מוסיף רק מקורות חסרים ולא מחליף רשומות קיימות. קישורים לתמונות ומצב אימות מחיקה לא ישוחזרו.")
                         .font(.footnote)
+                    Button("שחזר מקורות חסרים") { confirming = true }
+                        .disabled(checking || library.busy || comparison.newCount == 0)
                 }
             }
             Section {
@@ -34,7 +37,25 @@ struct BackupInspectionView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("אימות גיבוי")
+        .navigationTitle("אימות ושחזור גיבוי")
+        .confirmationDialog("להוסיף לספרייה רק מקורות שאינם קיימים?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("שחזר מקורות חסרים") {
+                guard let verified else { return }
+                checking = true
+                Task {
+                    defer { checking = false }
+                    do {
+                        let result = try await library.restoreBackup(verified)
+                        message = "נוספו \(result.inserted) · דולגו \(result.skipped) · נכשלו \(result.failed). רשומות קיימות לא הוחלפו."
+                    } catch {
+                        message = "השחזור לא התחיל: \(error.localizedDescription)"
+                    }
+                }
+            }
+            Button("ביטול", role: .cancel) {}
+        } message: {
+            Text("רק מקורות מגיבוי שאתה סומך עליו. הפעולה אינה מוחקת תמונות או רשומות. תקלה עלולה להשאיר שחזור חלקי.")
+        }
         .fileImporter(isPresented: $choosing, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
             verified = nil
             message = nil
