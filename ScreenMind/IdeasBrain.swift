@@ -216,9 +216,7 @@ extension BrainGraph {
     private static func topicKey(for capture: Capture, tokens: [String], documentFrequency: [String: Int], intentFrequency: [SaveIntent: [String: Int]]) -> String {
         let collection = capture.collection.trimmingCharacters(in: .whitespacesAndNewlines)
         if !collection.isEmpty && collection != "כללי" { return "space:\(collection)" }
-        if let token = BrainText.bestToken(in: tokens, intent: capture.intent, documentFrequency: documentFrequency, intentFrequency: intentFrequency[capture.intent] ?? [:]) {
-            return "word:\(token)"
-        }
+        if let topic = capture.smartTopic { return "smart:\(topic.rawValue)" }
         return "open"
     }
 
@@ -229,7 +227,7 @@ extension BrainGraph {
     private static func topicTitle(for key: String, capture: Capture) -> String {
         if key == "open" { return "רעיונות פתוחים" }
         if key.hasPrefix("space:") { return String(key.dropFirst("space:".count)) }
-        if key.hasPrefix("word:") { return String(key.dropFirst("word:".count)) }
+        if key.hasPrefix("smart:"), let topic = SmartTopic(rawValue: String(key.dropFirst("smart:".count))) { return topic.label }
         return capture.collection
     }
 
@@ -238,14 +236,14 @@ extension BrainGraph {
             let leftMoment = isMoment(lhs, now: now, calendar: calendar)
             let rightMoment = isMoment(rhs, now: now, calendar: calendar)
             if leftMoment != rightMoment { return leftMoment && !rightMoment }
-            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            if lhs.sourceDate != rhs.sourceDate { return lhs.sourceDate > rhs.sourceDate }
             return lhs.id < rhs.id
         }
     }
 
     private static func captureNode(_ capture: Capture, now: Date, calendar: Calendar) -> BrainNode {
         let moment = isMoment(capture, now: now, calendar: calendar)
-        let title = capture.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "צילום" : capture.title
+        let title = capture.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "צילום" : capture.displayTitle
         let subtitle = moment ? "הגיע הרגע · \(capture.intent.title)" : capture.intent.title
         return BrainNode(
             id: "item:\(capture.id)", kind: .capture, title: title, subtitle: subtitle,
