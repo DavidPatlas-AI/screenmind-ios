@@ -4,6 +4,9 @@ import UniformTypeIdentifiers
 struct BackupInspectionView: View {
     @EnvironmentObject private var library: NativeLibrary
     @State private var choosing = false
+    @State private var choosingFolder = false
+    @State private var restoringFolder = false
+    @State private var confirmFolderRestore = false
     @State private var checking = false
     @State private var confirming = false
     @State private var verified: VerifiedBackup?
@@ -11,6 +14,16 @@ struct BackupInspectionView: View {
 
     var body: some View {
         Form {
+            Section("גיבוי ספרייה מלאה") {
+                Text("יצירת תיקייה חדשה עם כל המקורות בארכיון המקומי. הגיבוי אינו מוצפן ואינו כולל תמונות שלא יובאו לאפליקציה. שמור מחוץ לתיקיית האפליקציה ובמקום שאתה סומך עליו.")
+                Button("גבה את כל הספרייה", systemImage: "externaldrive") {
+                    restoringFolder = false
+                    choosingFolder = true
+                }.disabled(checking || library.busy || library.captures.isEmpty)
+                Button("שחזר ספרייה מגיבוי", systemImage: "arrow.clockwise") {
+                    confirmFolderRestore = true
+                }.disabled(checking || library.busy)
+            }
             Section("בדיקת גיבוי") {
                 Text("בחר קובץ ZIP שנוצר במסך השמירה והפינוי. נבדוק את שלמות הקובץ, המטא־דאטה והמזהים, בלי לשנות את הספרייה.")
                 Button("בחר גיבוי מתוך Files", systemImage: "folder") { choosing = true }
@@ -33,7 +46,7 @@ struct BackupInspectionView: View {
                 }
             }
             Section {
-                Text("הבדיקה מקומית בלבד. נתמכים גיבויים מהפורמט הקיים של ScreenMind, עד 20 מקורות ועד 40MB לקובץ כולל מטא־דאטה. אין להסתמך על קובץ זה כגיבוי מלא של הספרייה.")
+                Text("הבדיקה מקומית בלבד. נתמכים גיבויים מהפורמט הקיים של ScreenMind, עד 20 מקורות ועד 40MB לקובץ כולל מטא־דאטה. לקובץ ZIP יחיד יש מגבלה זו; לגיבוי ספרייה מלאה השתמש בתיקייה המחולקת לחלקים.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }
@@ -55,6 +68,41 @@ struct BackupInspectionView: View {
             Button("ביטול", role: .cancel) {}
         } message: {
             Text("רק מקורות מגיבוי שאתה סומך עליו. הפעולה אינה מוחקת תמונות או רשומות. תקלה עלולה להשאיר שחזור חלקי.")
+        }
+        .confirmationDialog("לשחזר מקורות חסרים מתיקיית גיבוי?", isPresented: $confirmFolderRestore, titleVisibility: .visible) {
+            Button("בחר תיקיית גיבוי") {
+                restoringFolder = true
+                choosingFolder = true
+            }
+            Button("ביטול", role: .cancel) {}
+        } message: {
+            Text("כל החלקים ייבדקו לפני השחזור. רשומות קיימות לא יוחלפו. בחר רק גיבוי מהימן; תקלה באמצע עלולה להותיר שחזור חלקי.")
+        }
+        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+            verified = nil
+            message = nil
+            switch result {
+            case .success(let urls):
+                guard let folder = urls.first else { return }
+                let restore = restoringFolder
+                checking = true
+                Task {
+                    defer { checking = false }
+                    do {
+                        if restore {
+                            let report = try await library.restoreLibraryBackup(from: folder)
+                            message = "נוספו \(report.inserted) · דולגו \(report.skipped) · נכשלו \(report.failed) · לא עובדו \(report.notProcessed)."
+                        } else {
+                            let report = try await library.exportLibraryBackup(to: folder)
+                            message = "נשמרו \(report.count) מקורות ב־\(report.parts) חלקים בתיקייה \(report.folder). שמור את כל התיקייה."
+                        }
+                    } catch {
+                        message = "הפעולה לא הושלמה: \(error.localizedDescription)"
+                    }
+                }
+            case .failure:
+                message = "לא ניתן לפתוח את התיקייה."
+            }
         }
         .fileImporter(isPresented: $choosing, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
             verified = nil
