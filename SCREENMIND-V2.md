@@ -18,6 +18,8 @@
 
 - Release safety branch: legacy reduced-image deletion shortcuts fail closed. Album suggestions route to existing verified-backup workflow, and the home prompt has no direct deletion action. Updated UI tests cover the blocked deletion. Added in-place upgrade checklist; no full-library backup or restore implementation yet.
 
+- Quality branch: reusable in-memory lexical index, term-frequency weighting, conservative Hebrew prefix matching, curated 16 multilingual concepts, no category-only results, explicit related-match label. Added synthetic benchmark at 100/200/3000/10000 records reporting top-1, recall@5, index and query durations. This fixture tests only simple known-item retrieval, not realistic OCR, open-ended multilingual semantics, phone memory/energy, or classification precision. Benchmark targets are not measured results until CI completes. No private screenshot contents used.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Deployment and live testing of the optional generative gateway, broader multilingual semantic AI and project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
