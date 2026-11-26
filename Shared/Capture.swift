@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum SaveIntent: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
     case remember, act, inspiration, evidence
@@ -32,6 +33,7 @@ struct Capture: Identifiable, Codable, Hashable, Sendable {
     var taskTitle: String?
     var taskDueAt: Date?
     var taskCompletedAt: Date?
+    var aiAnalysis: AIAnalysis?
     var digest: String { id }
     var needsReview: Bool { reviewedAt == nil }
     var hasTask: Bool { intent == .act && !(taskTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -138,9 +140,39 @@ extension Capture {
         let value = collection.trimmingCharacters(in: .whitespacesAndNewlines)
         return !value.isEmpty && value != "כללי"
     }
-    var smartTopic: SmartTopic? { SmartTopic.classify(title: title, text: text) }
+    var smartTopic: SmartTopic? {
+        if let result = currentAIAnalysis, let topic = SmartTopic(rawValue: result.topic) { return topic }
+        return SmartTopic.classify(title: title, text: text)
+    }
     var effectiveCollection: String { hasManualCollection ? collection : (smartTopic?.label ?? "רעיונות פתוחים") }
-    var displayTitle: String { reviewedAt != nil ? title : SmartTopic.readableTitle(title: title, text: text) }
+    var displayTitle: String {
+        if reviewedAt != nil { return title }
+        return currentAIAnalysis?.title ?? SmartTopic.readableTitle(title: title, text: text)
+    }
     var sourceDate: Date { photoCreatedAt ?? createdAt }
     var needsTextAttention: Bool { textStatus == "failed" || textStatus == "noText" }
+}
+
+
+// Separate from original OCR and user-authored fields. Old archives decode
+// without this optional field; editing a source invalidates its AI analysis.
+struct AIAnalysis: Codable, Hashable, Sendable {
+    let sourceDigest: String
+    let title: String
+    let summary: String
+    let topic: String
+    let suggestedTask: String
+    let language: String
+}
+extension Capture {
+    var aiInputTitle: String { String(title.prefix(200)) }
+    var aiInputText: String { String(text.prefix(2800)) }
+    var aiSourceDigest: String {
+        let source = "\(title.utf8.count):\(title)\(text)"
+        return SHA256.hash(data: Data(source.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    var currentAIAnalysis: AIAnalysis? {
+        guard let value = aiAnalysis, value.sourceDigest == aiSourceDigest else { return nil }
+        return value
+    }
 }
