@@ -100,12 +100,15 @@ struct VerifiedBackup: Sendable {
         var skipped = 0
         var failed = 0
     }
-    func restoreNew(to vault: Vault) throws -> RestoreReport {
+    func preflightImages() throws {
         // Preflight every source before making any changes.
         for capture in captures {
             guard let bytes = sources[capture.id] else { throw Self.invalid() }
             try Vault.validateSourceImage(bytes)
         }
+    }
+    func restoreNew(to vault: Vault) throws -> RestoreReport {
+        try preflightImages()
         var report = RestoreReport()
         for capture in captures {
             guard let bytes = sources[capture.id] else { throw Self.invalid() }
