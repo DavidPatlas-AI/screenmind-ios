@@ -768,6 +768,42 @@ import UIKit
         XCTAssertTrue(try empty.all().isEmpty)
     }
 
+    func testEncryptedLibraryBackupRoundTripWrongKeyAndTampering() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = try Vault(rootURL: folder.appendingPathComponent("source"))
+        let destination = try Vault(rootURL: folder.appendingPathComponent("destination"))
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64))
+        let bytes = renderer.pngData { ctx in
+            UIColor.blue.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        let capture = try source.save(data: bytes, name: "sample.png", photoIdentifier: nil, source: "test")
+        try source.update(capture.id) { $0.title = "פרטי"; $0.text = "מידע לדוגמה" }
+        let encryption = BackupEncryption.generate()
+        let recovered = try BackupEncryption(recoveryCode: encryption.recoveryCode)
+        XCTAssertThrowsError(try BackupEncryption(recoveryCode: "invalid"))
+        let report = try LibraryBackup.export(vault: source, to: folder, encryption: encryption)
+        let backup = folder.appendingPathComponent(report.folder)
+        let names = try FileManager.default.contentsOfDirectory(atPath: backup.path)
+        XCTAssertTrue(names.allSatisfy { $0.hasSuffix(".smenc") })
+        XCTAssertThrowsError(try LibraryBackup.inspect(backup))
+        XCTAssertThrowsError(try LibraryBackup.restore(backup, to: destination, encryption: .generate()))
+        XCTAssertTrue(try destination.all().isEmpty)
+        let index = try LibraryBackup.inspect(backup, encryption: recovered)
+        XCTAssertEqual(index.count, 1)
+        XCTAssertEqual(try LibraryBackup.restore(backup, to: destination, encryption: recovered).inserted, 1)
+        XCTAssertEqual(try destination.all().first?.text, "מידע לדוגמה")
+        let empty = try Vault(rootURL: folder.appendingPathComponent("empty"))
+        let part = backup.appendingPathComponent(try XCTUnwrap(index.parts.first).name)
+        var corrupted = try Data(contentsOf: part)
+        corrupted[corrupted.count-1] ^= 1
+        try corrupted.write(to: part)
+        XCTAssertThrowsError(try LibraryBackup.restore(backup, to: empty, encryption: recovered))
+        XCTAssertTrue(try empty.all().isEmpty)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
