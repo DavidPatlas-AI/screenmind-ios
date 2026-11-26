@@ -12,6 +12,8 @@
 
 - Projects branch: discovers groups of at least two screenshots with the same explicit GitHub repository or Netlify app address. Ambiguous multi-project screenshots are not assigned. Project cards open a source timeline and allow a text-only source draft export; no generated AI claims. Added project chronology and legacy-data decoding tests.
 
+- Intelligence branch: private source-linked search using Apple's on-device Natural Language sentence embeddings when the language model is available. Searches all active records lexically and up to 250 recent records semantically, ranks exact matches first, and shows the search method. No cloud account, API key, or external data transfer. Hebrew and other languages without a suitable local model use the lexical fallback; no translation or generative answers. Added deterministic tests for relevance and vector similarity.
+
 ## Release blockers
 - Build and tests on macOS, test actual iPhone and existing libraries. Measure performance with thousands of captures. Current accuracy is not established.
 - Genuine multilingual semantic AI, broader project inference beyond explicit addresses, learned intent, tasks, stories, natural-language search, localized UI, and full 3D redesign are not implemented.
