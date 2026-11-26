@@ -18,6 +18,7 @@ on:
       - screenmind-v2-model-lab
       - screenmind-v2-safe-restore
       - screenmind-v2-library-backup
+      - screenmind-v2-encrypted-backup
 permissions:
   contents: read
 concurrency:
