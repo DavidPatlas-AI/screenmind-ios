@@ -85,41 +85,77 @@ struct NativeCollectionsView: View {
     let open: (Capture) -> Void
     @State private var cleanup: CaptureSelection?
     var body: some View {
-        List {
-            if library.collections.isEmpty {
-                ContentUnavailableView("כל רעיון יכול לקבל מקום.", systemImage: "folder",
-                                       description: Text("סרוק צילומים והנושאים יופיעו כאן אוטומטית. אפשר לשנות שיוך בפרטי מקור."))
-            }
-            ForEach(library.collections, id: \.self) { collection in
-                NavigationLink {
-                    NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
-                        .navigationTitle(collection)
-                        .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
-                        .toolbar {
-                            ToolbarItem(placement: .bottomBar) {
-                                ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
-                                    Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
+        let groups = library.topicGroups
+        let ordered = groups.keys.sorted {
+            let left = groups[$0]?.count ?? 0, right = groups[$1]?.count ?? 0
+            return left == right ? $0.localizedStandardCompare($1) == .orderedAscending : left > right
+        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("עולם הידע שלי").font(.largeTitle.bold())
+                    Text("הצילומים כבר מסודרים לנושאים. אפשר לפתוח כל נושא ולגלות מה נשמר.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                if ordered.isEmpty {
+                    ContentUnavailableView("כל רעיון יכול לקבל מקום.", systemImage: "folder",
+                                           description: Text("סרוק צילומים והנושאים יופיעו כאן אוטומטית."))
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 12)], spacing: 12) {
+                    ForEach(ordered, id: \.self) { collection in
+                        let count = groups[collection]?.count ?? 0
+                        let style = topicStyle(collection)
+                        NavigationLink {
+                            NativeLibraryView(open: open, cleanup: { cleanup = CaptureSelection(ids: $0) }, collection: collection)
+                                .navigationTitle(collection)
+                                .safeAreaInset(edge: .bottom, spacing: 8) { ScanProgressBar() }
+                                .toolbar {
+                                    ToolbarItem(placement: .bottomBar) {
+                                        ShareLink(item: CollectionBrief.text(name: collection, captures: library.captures)) {
+                                            Label("שתף סיכום מרחב", systemImage: "square.and.arrow.up")
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "folder").font(.title2).foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(collection).font(.headline)
-                            Text("\(library.active.filter { $0.effectiveCollection == collection }.count) מקורות")
-                                .font(.subheadline).foregroundStyle(.secondary)
-                        }.padding(.vertical, 8)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Image(systemName: style.0)
+                                    .font(.system(size: 23, weight: .semibold))
+                                    .foregroundStyle(style.1)
+                                    .frame(width: 46, height: 46)
+                                    .background(style.1.opacity(0.13), in: RoundedRectangle(cornerRadius: 13))
+                                Text(count.formatted()).font(.system(.largeTitle, design: .rounded).bold()).foregroundStyle(.primary)
+                                Text(collection).font(.headline).foregroundStyle(.primary)
+                                    .lineLimit(2, reservesSpace: true)
+                                Text("מקורות").font(.caption).foregroundStyle(.secondary)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(15)
+                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+                                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(style.1.opacity(0.2), lineWidth: 1) }
+                        }.buttonStyle(.plain)
                     }
                 }
-            }
-            Section {
-                Text("הנושאים מוצעים אוטומטית לפי הטקסט המזוהה. שיוך שבחרת תמיד נשמר. זהו מיון מקומי בסיסי, לא מודל AI.")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-        }.sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
+                Text("המיון מקומי ומבוסס על הטקסט המזוהה. אפשר לתקן שיוך בפרטי מקור בכל עת.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(18)
+        }.background(NativeTheme.canvas)
+            .sheet(item: $cleanup) { selection in CleanupView(ids: selection.ids) }
+    }
+    private func topicStyle(_ name: String) -> (String, Color) {
+        switch SmartTopic.allCases.first(where: { $0.label == name }) {
+        case .technology: return ("cpu", .indigo)
+        case .learning: return ("book.closed", .blue)
+        case .finance: return ("creditcard", .green)
+        case .shopping: return ("bag", .orange)
+        case .work: return ("briefcase", .teal)
+        case .media: return ("play.rectangle", .purple)
+        case .travel: return ("map", .cyan)
+        case .food: return ("fork.knife", .pink)
+        case .documents: return ("doc.text", .brown)
+        case nil: return (name == "רעיונות פתוחים" ? "sparkles" : "folder.fill", NativeTheme.accent)
+        }
     }
 }
+
 struct NativeSettingsView: View {
     @EnvironmentObject private var library: NativeLibrary
     @Environment(\.dismiss) private var dismiss
