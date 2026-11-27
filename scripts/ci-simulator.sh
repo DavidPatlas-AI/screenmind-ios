@@ -77,6 +77,8 @@ if [ -d /tmp/screenmind-shots ]; then
   cp -f /tmp/screenmind-shots/*.png ci-results/screenshots/ 2>/dev/null || true
 fi
 python3 scripts/export-screenshots.py ci-results || true
+# Preserve raw benchmark lines; timings are simulator observations, not device guarantees.
+grep -E "INTEGRATED_SCALE|MEMORY_BENCHMARK" ci-results/build-and-test.log > ci-results/scale-benchmark.txt || true
 SHOTS="$(find ci-results/screenshots -name '*.png' | wc -l | tr -d ' ')"
 printf 'Swift test exit %s. Simulator screenshots: %s.\n' "$STATUS" "$SHOTS" | tee ci-results/RESULT.txt
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
