@@ -889,6 +889,34 @@ import UIKit
         XCTAssertEqual(ArticleGateway.clipped("א😀ב", max: 3), "א😀")
     }
 
+    func testMemoryChatUsesLiteralEvidenceAndExcludesArchived() {
+        let date = Date(timeIntervalSince1970: 1234)
+        let body = String(repeating: "א", count: 500) + " מדריך גיבוי מוצפן " + String(repeating: "ב", count: 500)
+        let first = idea("a", title: "מדריך", text: body, at: date)
+        var archived = idea("b", title: "גיבוי", text: "לא להצגה", at: date)
+        archived.isArchived = true
+        let other = idea("c", title: "עוד מקור", text: "טקסט אחר", at: date)
+        let hits = ["missing","a","a","b"].map { MemorySearchHit(id: $0, score: 100, match: .exact) }
+        let turn = MemoryChat.makeTurn(question: "גיבוי", captures: [first, archived, other], hits: hits, narrowed: false)
+        XCTAssertEqual(turn.scopeCount, 2)
+        XCTAssertEqual(turn.evidence.map(\.id), ["a"])
+        guard let excerpt = turn.evidence.first?.excerpt else { return XCTFail("Missing evidence") }
+        XCTAssertTrue(body.contains(excerpt))
+        XCTAssertTrue(excerpt.contains("גיבוי מוצפן"))
+        XCTAssertLessThanOrEqual(excerpt.count, 360)
+        XCTAssertEqual(MemoryChat.scope([first, archived, other], previousIDs: ["a","b"]).map(\.id), ["a"])
+        XCTAssertTrue(MemoryChat.scope([first], previousIDs: []).isEmpty)
+    }
+
+    func testMemoryChatEvidenceLimitAndNoResults() {
+        let items = (0..<10).map { i in
+            idea("id-\(i)", title: "מקור", text: "טקסט בדיקה", at: Date())
+        }
+        let hits = items.map { MemorySearchHit(id: $0.id, score: 100, match: .exact) }
+        XCTAssertEqual(MemoryChat.makeTurn(question: "בדיקה", captures: items, hits: hits, narrowed: false).evidence.count, 6)
+        XCTAssertTrue(MemoryChat.makeTurn(question: "לא נמצא", captures: items, hits: [], narrowed: false).evidence.isEmpty)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
