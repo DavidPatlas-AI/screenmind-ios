@@ -33,6 +33,7 @@ on:
       - screenmind-v2-scale-validation
       - screenmind-v2-search-performance
       - screenmind-v2-beta-hardening
+      - screenmind-v2-beta-polish
 permissions:
   contents: read
 concurrency:
