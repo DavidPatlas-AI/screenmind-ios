@@ -311,10 +311,14 @@ struct MemorySearchView: View {
     @State private var running = false
     @State private var revision = 0
     @State private var recentQuestions: [String] = []
+    @State private var contextQuestion = ""
+    @State private var useContext = false
     private struct Request: Hashable {
         let query: String
         let revision: Int
+        let context: String
     }
+    private var activeContext: String { useContext ? contextQuestion : "" }
     var body: some View {
         List {
             Section {
@@ -335,11 +339,18 @@ struct MemorySearchView: View {
             if !recentQuestions.isEmpty {
                 Section("שאלות אחרונות — בהפעלה זו בלבד") {
                     ForEach(recentQuestions, id: \.self) { question in
-                        Button { query = question } label: {
+                        Button { useContext = false; query = question } label: {
                             Label(question, systemImage: "clock.arrow.circlepath")
                         }
                     }
-                    Button("נקה היסטוריה", role: .destructive) { recentQuestions.removeAll() }
+                    Button("נקה היסטוריה", role: .destructive) { recentQuestions.removeAll(); contextQuestion = ""; useContext = false }
+                }
+            }
+            if !contextQuestion.isEmpty {
+                Section("הקשר לחיפוש המשך") {
+                    Text(contextQuestion).font(.caption).textSelection(.enabled)
+                    Toggle("כלול שאלה קודמת בחיפוש המקומי", isOn: $useContext)
+                    Button("הסר הקשר") { useContext = false; contextQuestion = "" }
                 }
             }
             if let response, !running {
@@ -353,7 +364,12 @@ struct MemorySearchView: View {
                     } label: {
                         Label("שמור שאלה להפעלה זו", systemImage: "bookmark")
                     }
-                    Text("אפשר לחזור לשאלה ולשנות אותה. כל חיפוש עצמאי; עדיין אין הקשר שיחה אוטומטי.")
+                    Button("השתמש בשאלה זו כהקשר לשאלה הבאה") {
+                        contextQuestion = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+                        query = ""
+                        useContext = true
+                    }.disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Text("ההקשר משמש להרחבת החיפוש המקומי בלבד. אין עדיין הבנה של תשובות קודמות.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 let candidates = Array(response.hits.compactMap { library.capture($0.id) }
@@ -395,14 +411,15 @@ struct MemorySearchView: View {
         .navigationTitle("חיפוש חכם")
         .searchable(text: $query, prompt: "מה אני רוצה למצוא?")
         .onChange(of: library.captures) { _, _ in revision += 1 }
-        .task(id: Request(query: query, revision: revision)) {
+        .task(id: Request(query: query, revision: revision, context: activeContext)) {
             response = nil
             let input = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if input.isEmpty { running = false; return }
             running = true
             do { try await Task.sleep(nanoseconds: 350_000_000) }
             catch { return }
-            let result = await MemorySearchEngine.shared.search(query: input, captures: library.captures)
+            let searchText = activeContext.isEmpty ? input : activeContext + " " + input
+            let result = await MemorySearchEngine.shared.search(query: searchText, captures: library.captures)
             guard !Task.isCancelled else { return }
             response = result
             running = false
