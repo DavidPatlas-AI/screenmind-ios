@@ -11,7 +11,6 @@ struct BackupInspectionView: View {
     @State private var restoreCode = ""
     @State private var encryption: BackupEncryption?
     @State private var confirmedStorage = false
-    @State private var confirmFolderRestore = false
     @State private var checking = false
     @State private var confirming = false
     @State private var verified: VerifiedBackup?
@@ -29,6 +28,7 @@ struct BackupInspectionView: View {
                     confirmedStorage = false
                 }.disabled(checking || library.busy || library.captures.isEmpty)
                 if !recoveryCode.isEmpty {
+                    Text("אין לצלם או לשתף את מפתח השחזור.").font(.caption).foregroundStyle(.orange)
                     Text(recoveryCode).font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .environment(\.layoutDirection, .leftToRight)
@@ -50,13 +50,13 @@ struct BackupInspectionView: View {
                         encryption = try BackupEncryption(recoveryCode: restoreCode.trimmingCharacters(in: .whitespacesAndNewlines))
                         restoreCode = ""
                         mode = .encryptedRestore
-                        confirmFolderRestore = true
+                        confirming = true
                     } catch { message = "מפתח שחזור אינו תקין." }
                 }.disabled(checking || library.busy || restoreCode.isEmpty)
                 Button("שחזר תיקיית גיבוי ישנה ולא מוצפנת") {
                     clearKey()
                     mode = .legacyRestore
-                    confirmFolderRestore = true
+                    confirming = true
                 }.disabled(checking || library.busy)
             }
             Section("בדיקת גיבוי") {
@@ -76,7 +76,7 @@ struct BackupInspectionView: View {
                     LabeledContent("נפח המקורות", value: ByteCountFormatter.string(fromByteCount: Int64(verified.sourceBytes), countStyle: .file))
                     Text("בדיקת שלמות אינה אימות מול התמונות או חתימה דיגיטלית. השחזור מוסיף רק מקורות חסרים ולא מחליף רשומות קיימות. קישורים לתמונות ומצב אימות מחיקה לא ישוחזרו.")
                         .font(.footnote)
-                    Button("שחזר מקורות חסרים") { confirming = true }
+                    Button("שחזר מקורות חסרים") { mode = .zip; clearKey(); confirming = true }
                         .disabled(checking || library.busy || comparison.newCount == 0)
                 }
             }
@@ -87,7 +87,8 @@ struct BackupInspectionView: View {
         }
         .navigationTitle("אימות ושחזור גיבוי")
         .confirmationDialog("להוסיף לספרייה רק מקורות שאינם קיימים?", isPresented: $confirming, titleVisibility: .visible) {
-            Button("שחזר מקורות חסרים") {
+            Button(mode == .zip ? "שחזר מקורות חסרים" : "בחר תיקיית גיבוי") {
+                if mode != .zip { choosing = true; return }
                 guard let verified else { return }
                 checking = true
                 Task {
@@ -100,17 +101,9 @@ struct BackupInspectionView: View {
                     }
                 }
             }
-            Button("ביטול", role: .cancel) {}
-        } message: {
-            Text("רק מקורות מגיבוי שאתה סומך עליו. הפעולה אינה מוחקת תמונות או רשומות. תקלה עלולה להשאיר שחזור חלקי.")
-        }
-        .confirmationDialog("לשחזר מקורות חסרים מתיקיית גיבוי?", isPresented: $confirmFolderRestore, titleVisibility: .visible) {
-            Button("בחר תיקיית גיבוי") {
-                choosing = true
-            }
             Button("ביטול", role: .cancel) { clearKey() }
         } message: {
-            Text("כל החלקים ייבדקו לפני השחזור. רשומות קיימות לא יוחלפו. בחר רק גיבוי מהימן; תקלה באמצע עלולה להותיר שחזור חלקי.")
+            Text("כל המקורות ייבדקו לפני השחזור. רשומות קיימות לא יוחלפו. בחר רק גיבוי מהימן; תקלה עלולה להותיר שחזור חלקי.")
         }
         .fileImporter(isPresented: $choosing, allowedContentTypes: mode == .zip ? [.zip] : [.folder], allowsMultipleSelection: false) { result in
             if mode != .zip {
