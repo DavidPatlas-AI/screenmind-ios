@@ -3,9 +3,14 @@ import UniformTypeIdentifiers
 
 struct BackupInspectionView: View {
     @EnvironmentObject private var library: NativeLibrary
+    private enum ImportMode { case zip, encryptedExport, encryptedRestore, legacyRestore }
+    @State private var mode: ImportMode = .zip
     @State private var choosing = false
-    @State private var choosingFolder = false
-    @State private var restoringFolder = false
+    @State private var recoveryCode = ""
+    @State private var confirmationCode = ""
+    @State private var restoreCode = ""
+    @State private var encryption: BackupEncryption?
+    @State private var confirmedStorage = false
     @State private var confirmFolderRestore = false
     @State private var checking = false
     @State private var confirming = false
@@ -15,18 +20,48 @@ struct BackupInspectionView: View {
     var body: some View {
         Form {
             Section("גיבוי ספרייה מלאה") {
-                Text("יצירת תיקייה חדשה עם כל המקורות בארכיון המקומי. הגיבוי אינו מוצפן ואינו כולל תמונות שלא יובאו לאפליקציה. שמור מחוץ לתיקיית האפליקציה ובמקום שאתה סומך עליו.")
-                Button("גבה את כל הספרייה", systemImage: "externaldrive") {
-                    restoringFolder = false
-                    choosingFolder = true
+                Text("גיבוי חדש מוצפן במפתח שחזור אקראי. הוא כולל רק מקורות שכבר נמצאים בארכיון המקומי. שמור את התיקייה מחוץ לאפליקציה ואת המפתח בנפרד. בלי המפתח אין אפשרות לשחזר.")
+                Button("צור מפתח לגיבוי מוצפן", systemImage: "lock.shield") {
+                    let key = BackupEncryption.generate()
+                    encryption = key
+                    recoveryCode = key.recoveryCode
+                    confirmationCode = ""
+                    confirmedStorage = false
                 }.disabled(checking || library.busy || library.captures.isEmpty)
-                Button("שחזר ספרייה מגיבוי", systemImage: "arrow.clockwise") {
+                if !recoveryCode.isEmpty {
+                    Text(recoveryCode).font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .environment(\.layoutDirection, .leftToRight)
+                    SecureField("הזן שוב את המפתח ששמרת", text: $confirmationCode)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Toggle("שמרתי את המפתח בנפרד מהגיבוי", isOn: $confirmedStorage)
+                    Button("בחר תיקייה לגיבוי מוצפן") {
+                        mode = .encryptedExport
+                        choosing = true
+                    }.disabled(checking || library.busy || !confirmedStorage || confirmationCode != recoveryCode || encryption == nil)
+                    Button("נקה את המפתח מהמסך", role: .destructive) { clearKey() }
+                        .disabled(checking)
+                }
+                SecureField("מפתח שחזור של גיבוי קיים", text: $restoreCode)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("שחזר גיבוי מוצפן", systemImage: "lock.open") {
+                    do {
+                        clearKey()
+                        encryption = try BackupEncryption(recoveryCode: restoreCode.trimmingCharacters(in: .whitespacesAndNewlines))
+                        restoreCode = ""
+                        mode = .encryptedRestore
+                        confirmFolderRestore = true
+                    } catch { message = "מפתח שחזור אינו תקין." }
+                }.disabled(checking || library.busy || restoreCode.isEmpty)
+                Button("שחזר תיקיית גיבוי ישנה ולא מוצפנת") {
+                    clearKey()
+                    mode = .legacyRestore
                     confirmFolderRestore = true
                 }.disabled(checking || library.busy)
             }
             Section("בדיקת גיבוי") {
                 Text("בחר קובץ ZIP שנוצר במסך השמירה והפינוי. נבדוק את שלמות הקובץ, המטא־דאטה והמזהים, בלי לשנות את הספרייה.")
-                Button("בחר גיבוי מתוך Files", systemImage: "folder") { choosing = true }
+                Button("בחר גיבוי מתוך Files", systemImage: "folder") { clearKey(); mode = .zip; choosing = true }
                     .disabled(checking)
                 if checking { ProgressView("בודק את הקובץ במכשיר…") }
                 if let message { Text(message).foregroundStyle(.secondary) }
@@ -71,40 +106,44 @@ struct BackupInspectionView: View {
         }
         .confirmationDialog("לשחזר מקורות חסרים מתיקיית גיבוי?", isPresented: $confirmFolderRestore, titleVisibility: .visible) {
             Button("בחר תיקיית גיבוי") {
-                restoringFolder = true
-                choosingFolder = true
+                choosing = true
             }
-            Button("ביטול", role: .cancel) {}
+            Button("ביטול", role: .cancel) { clearKey() }
         } message: {
             Text("כל החלקים ייבדקו לפני השחזור. רשומות קיימות לא יוחלפו. בחר רק גיבוי מהימן; תקלה באמצע עלולה להותיר שחזור חלקי.")
         }
-        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-            verified = nil
-            message = nil
-            switch result {
-            case .success(let urls):
-                guard let folder = urls.first else { return }
-                let restore = restoringFolder
-                checking = true
-                Task {
-                    defer { checking = false }
-                    do {
-                        if restore {
-                            let report = try await library.restoreLibraryBackup(from: folder)
-                            message = "נוספו \(report.inserted) · דולגו \(report.skipped) · נכשלו \(report.failed) · לא עובדו \(report.notProcessed)."
-                        } else {
-                            let report = try await library.exportLibraryBackup(to: folder)
-                            message = "נשמרו \(report.count) מקורות ב־\(report.parts) חלקים בתיקייה \(report.folder). שמור את כל התיקייה."
-                        }
-                    } catch {
-                        message = "הפעולה לא הושלמה: \(error.localizedDescription)"
+        .fileImporter(isPresented: $choosing, allowedContentTypes: mode == .zip ? [.zip] : [.folder], allowsMultipleSelection: false) { result in
+            if mode != .zip {
+                let operation = mode
+                let key = encryption
+                clearKey()
+                restoreCode = ""
+                verified = nil
+                message = nil
+                switch result {
+                case .success(let urls):
+                    guard let folder = urls.first else { return }
+                    guard operation == .legacyRestore || key != nil else {
+                        message = "מפתח חסר. לא בוצעה פעולה."
+                        return
                     }
+                    checking = true
+                    Task {
+                        defer { checking = false }
+                        do {
+                            if operation == .encryptedExport {
+                                let report = try await library.exportLibraryBackup(to: folder, encryption: key)
+                                message = "נשמרו \(report.count) מקורות מוצפנים ב־\(report.parts) חלקים בתיקייה \(report.folder). שמור את התיקייה ואת המפתח בנפרד."
+                            } else {
+                                let report = try await library.restoreLibraryBackup(from: folder, encryption: key)
+                                message = "נוספו \(report.inserted) · דולגו \(report.skipped) · נכשלו \(report.failed) · לא עובדו \(report.notProcessed)."
+                            }
+                        } catch { message = "הפעולה לא הושלמה: \(error.localizedDescription)" }
+                    }
+                case .failure: message = "לא ניתן לפתוח את התיקייה."
                 }
-            case .failure:
-                message = "לא ניתן לפתוח את התיקייה."
+                return
             }
-        }
-        .fileImporter(isPresented: $choosing, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
             verified = nil
             message = nil
             switch result {
@@ -131,5 +170,12 @@ struct BackupInspectionView: View {
                 message = "לא ניתן לפתוח את הקובץ."
             }
         }
+    }
+
+    private func clearKey() {
+        encryption = nil
+        recoveryCode = ""
+        confirmationCode = ""
+        confirmedStorage = false
     }
 }
