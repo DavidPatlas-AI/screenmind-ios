@@ -871,6 +871,24 @@ import UIKit
         XCTAssertEqual(ArticleSelection.title(String(repeating: "א", count: 200)).count, 120)
     }
 
+    func testArticleClientValidatesExactEvidenceAndLimits() throws {
+        let request = ArticleWireRequest(language: "he", title: "טיוטה",
+            items: [ArticleWireSource(id: "s0", title: "מקור", text: "נבדקו שלושה מסכים ונמצאה תקלה אחת.")])
+        XCTAssertTrue(ArticleGateway.valid(request))
+        let valid = Data(#"{"title":"טיוטה","sections":[{"heading":"בדיקה","paragraph":"נבדקו מסכים","evidence":[{"id":"s0","quote":"נבדקו שלושה מסכים"}]}]}"#.utf8)
+        let draft = try JSONDecoder().decode(ArticleWireDraft.self, from: valid)
+        XCTAssertTrue(draft.valid(for: request))
+        let changed = ArticleWireRequest(language: "he", title: "טיוטה",
+            items: [ArticleWireSource(id: "s0", title: "מקור", text: "נבדקו ארבעה מסכים ונמצאה תקלה אחת.")])
+        XCTAssertFalse(draft.valid(for: changed))
+        XCTAssertFalse(ArticleGateway.valid(ArticleWireRequest(language: "he", title: "טיוטה", items: request.items + request.items)))
+        XCTAssertNil(ArticleGateway.endpoint("http://example.com/article"))
+        XCTAssertNil(ArticleGateway.endpoint("https://example.com/article?key=secret"))
+        XCTAssertNil(ArticleGateway.endpoint("https://example.com/analyze"))
+        XCTAssertNotNil(ArticleGateway.endpoint("https://example.com/article"))
+        XCTAssertEqual(ArticleGateway.clipped("א😀ב", max: 3), "א😀")
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
