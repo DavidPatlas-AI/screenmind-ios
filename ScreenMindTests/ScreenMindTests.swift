@@ -370,6 +370,18 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testSemanticCandidatesCoverEntireLargeLibrary() {
+        let now = Date()
+        var captures = (0..<3000).map { index in
+            idea("capture-\(index)", title: "Sample", text: "Document \(index)", at: now.addingTimeInterval(Double(index)))
+        }
+        captures[1].isArchived = true
+        let candidates = MemorySearchEngine.semanticCandidates(captures, excluding: ["capture-2"])
+        XCTAssertEqual(candidates.count, 2998)
+        XCTAssertTrue(candidates.contains { $0.id == "capture-0" })
+        XCTAssertTrue(candidates.contains { $0.id == "capture-2999" })
+        XCTAssertFalse(candidates.contains { $0.id == "capture-1" || $0.id == "capture-2" })
+    }
     func testLocalConceptSearchSupportsHebrewSynonymsAndRussian() {
         let now = Date()
         let bug = idea("bug", title: "באג", text: "SwiftUI", at: now)
