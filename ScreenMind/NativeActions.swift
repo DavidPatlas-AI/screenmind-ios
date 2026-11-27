@@ -310,6 +310,7 @@ struct MemorySearchView: View {
     @State private var response: MemorySearchResponse?
     @State private var running = false
     @State private var revision = 0
+    @State private var recentQuestions: [String] = []
     private struct Request: Hashable {
         let query: String
         let revision: Int
@@ -331,7 +332,30 @@ struct MemorySearchView: View {
                     }
                 }
             }
+            if !recentQuestions.isEmpty {
+                Section("שאלות אחרונות — בהפעלה זו בלבד") {
+                    ForEach(recentQuestions, id: \.self) { question in
+                        Button { query = question } label: {
+                            Label(question, systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                    Button("נקה היסטוריה", role: .destructive) { recentQuestions.removeAll() }
+                }
+            }
             if let response, !running {
+                Section {
+                    Button {
+                        let question = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !question.isEmpty else { return }
+                        recentQuestions.removeAll { $0 == question }
+                        recentQuestions.insert(question, at: 0)
+                        recentQuestions = Array(recentQuestions.prefix(12))
+                    } label: {
+                        Label("שמור שאלה להפעלה זו", systemImage: "bookmark")
+                    }
+                    Text("אפשר לחזור לשאלה ולשנות אותה. כל חיפוש עצמאי; עדיין אין הקשר שיחה אוטומטי.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 let candidates = Array(response.hits.compactMap { library.capture($0.id) }
                     .filter { !$0.isArchived && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count >= 12 }
                     .prefix(8))
@@ -343,9 +367,9 @@ struct MemorySearchView: View {
                             GroundedArticleView(title: GroundedArticleResult.clip(query, limit: 120),
                                                 captures: candidates, open: open)
                         } label: {
-                            Label("הכן תשובה מ־\(candidates.count) מקורות באמצעות AI", systemImage: "sparkles")
+                            Label("הכן טיוטת כתבה בנושא מ־\(candidates.count) מקורות באמצעות AI", systemImage: "sparkles")
                         }
-                        Text("השליחה לשרת פרטי אופציונלית ודורשת אישור. ניתן להסיר מקורות ולערוך את הטקסט לפני השליחה.")
+                        Text("השליחה לשרת פרטי אופציונלית ודורשת אישור. ניתן להסיר מקורות ולערוך את הטקסט לפני השליחה. גם כותרת השאלה תישלח.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
