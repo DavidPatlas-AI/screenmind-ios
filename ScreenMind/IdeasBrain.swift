@@ -427,3 +427,49 @@ enum BrainLayout {
         return structural + semantic
     }
 }
+
+
+// Bounded 3-D geometry with perspective projection. It never changes the graph.
+struct SpatialBrainPoint: Identifiable, Equatable, Sendable {
+    let id: String
+    let x: Double
+    let y: Double
+    let depth: Double
+    let scale: Double
+}
+enum SpatialBrainLayout {
+    static let limit = 16
+
+    static func visibleIDs(graph: BrainGraph, focusID: String) -> [String] {
+        let focus = graph.node(focusID)?.kind == .topic ? focusID : BrainGraph.rootID
+        let children = graph.childIDs[focus] ?? []
+        let related = focus == BrainGraph.rootID ? [] : graph.relatedTopicIDs(of: focus)
+        var seen = Set([focus])
+        let nearby = related.filter { graph.node($0) != nil && seen.insert($0).inserted }.prefix(3)
+        let ids = children.filter { graph.node($0) != nil && seen.insert($0).inserted }
+        return [focus] + Array(nearby) + Array(ids.prefix(limit - 1 - nearby.count))
+    }
+
+    static func project(ids: [String], yaw: Double, pitch: Double, zoom: Double) -> [SpatialBrainPoint] {
+        guard let center = ids.first else { return [] }
+        let yaw = yaw.isFinite ? yaw.truncatingRemainder(dividingBy: 2 * .pi) : 0
+        let pitch = pitch.isFinite ? max(-1.25, min(1.25, pitch)) : 0
+        let zoom = zoom.isFinite ? max(0.7, min(1.25, zoom)) : 1
+        let count = min(limit - 1, ids.count - 1)
+        var points = [SpatialBrainPoint(id: center, x: 0, y: 0, depth: 0, scale: 1)]
+        for i in 0..<count {
+            let y = 1 - 2 * (Double(i) + 0.5) / Double(count)
+            let radius = sqrt(max(0, 1 - y*y))
+            let angle = Double(i) * .pi * (3 - sqrt(5.0))
+            let x = radius * cos(angle), z = radius * sin(angle)
+            let rx = x*cos(yaw) + z*sin(yaw)
+            let rz = -x*sin(yaw) + z*cos(yaw)
+            let ry = y*cos(pitch) - rz*sin(pitch)
+            let depth = y*sin(pitch) + rz*cos(pitch)
+            let perspective = 2.8 / (2.8-depth)
+            points.append(SpatialBrainPoint(id: ids[i+1], x: rx*perspective*zoom, y: ry*perspective*zoom,
+                                            depth: depth, scale: perspective))
+        }
+        return points.sorted { $0.depth == $1.depth ? $0.id < $1.id : $0.depth < $1.depth }
+    }
+}
