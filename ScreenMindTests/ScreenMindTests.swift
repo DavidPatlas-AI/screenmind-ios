@@ -917,6 +917,24 @@ import UIKit
         XCTAssertTrue(MemoryChat.makeTurn(question: "לא נמצא", captures: items, hits: [], narrowed: false).evidence.isEmpty)
     }
 
+    func testAnswerClientChecksCitationsAndInsufficientStatus() throws {
+        let request = AnswerRequest(language: "he", question: "כמה מסכים נבדקו?",
+            items: [ArticleWireSource(id: "s0", title: "מקור", text: "נבדקו שלושה מסכים ונמצאה תקלה אחת.")])
+        XCTAssertTrue(AnswerGateway.valid(request))
+        let good = Data(#"{"status":"answered","answer":"שלושה מסכים","evidence":[{"id":"s0","quote":"נבדקו שלושה מסכים"}]}"#.utf8)
+        let draft = try JSONDecoder().decode(AnswerDraft.self, from: good)
+        XCTAssertTrue(draft.valid(for: request))
+        let bad = Data(#"{"status":"conflicting","answer":"לא ברור","evidence":[{"id":"s0","quote":"נבדקו שלושה מסכים"}]}"#.utf8)
+        XCTAssertFalse(try JSONDecoder().decode(AnswerDraft.self, from: bad).valid(for: request))
+        let insufficient = Data(#"{"status":"insufficient","answer":"","evidence":[]}"#.utf8)
+        XCTAssertTrue(try JSONDecoder().decode(AnswerDraft.self, from: insufficient).valid(for: request))
+        let fabricated = Data(#"{"status":"answered","answer":"ארבעה","evidence":[{"id":"s0","quote":"נבדקו ארבעה מסכים"}]}"#.utf8)
+        XCTAssertFalse(try JSONDecoder().decode(AnswerDraft.self, from: fabricated).valid(for: request))
+        XCTAssertNil(AnswerGateway.endpoint("http://example.com/answer"))
+        XCTAssertNil(AnswerGateway.endpoint("https://example.com/article"))
+        XCTAssertNotNil(AnswerGateway.endpoint("https://example.com/answer"))
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
