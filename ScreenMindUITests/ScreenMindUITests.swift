@@ -115,6 +115,18 @@ final class ScreenMindUITests: XCTestCase {
         snap("05-favorite-kept")
     }
 
+    func testHomeDiscoveryOpensLocalMemoryChat() {
+        let app = launch(["-UITestSeed"])
+        let chat = app.buttons["home.memoryChat"]
+        for _ in 0..<6 where !chat.isHittable { app.swipeUp() }
+        XCTAssertTrue(chat.waitForExistence(timeout: 8))
+        XCTAssertTrue(chat.isHittable)
+        snap("14-home-discovery")
+        chat.tap()
+        XCTAssertTrue(app.navigationBars["שיחה עם הזיכרון"].waitForExistence(timeout: 8))
+        snap("15-local-memory-chat")
+    }
+
     func testSettingsDescribeOnDeviceHebrew() {
         let app = launch(["-UITestReset"])
         app.buttons["הגדרות ופרטיות"].tap()
