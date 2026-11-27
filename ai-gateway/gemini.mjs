@@ -33,13 +33,15 @@ export function createGeminiProvider(env=process.env, transport=globalThis.fetch
     throw Error("Set server-only GEMINI_API_KEY and GEMINI_MODEL.");
   }
   const url="https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent";
-  return async ({body,schema,instructions,signal})=>{
+  return async ({body,schema,instructions,signal,observeUsage})=>{
     const response=await transport(url,{
       method:"POST",redirect:"error",
       headers:{"x-goog-api-key":key,"content-type":"application/json"},
       signal,body:JSON.stringify(buildGeminiRequest({body,schema,instructions}))
     });
     if(!response.ok) throw Error("provider_unavailable");
-    return parseGeminiResponse(await response.json());
+    const data=await response.json();
+    observeUsage?.(data);
+    return parseGeminiResponse(data);
   };
 }
