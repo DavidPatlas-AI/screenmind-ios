@@ -520,6 +520,64 @@ private struct MemoryNotebookEntry: Codable, Identifiable {
     let sourceIDs: [String]
 }
 
+private struct MemoryNotebookGraph: View {
+    let notes: [MemoryNotebookEntry]
+    let connected: (MemoryNotebookEntry, MemoryNotebookEntry) -> Bool
+    @State private var selectedID: UUID?
+    private var visible: [MemoryNotebookEntry] { Array(notes.prefix(12)) }
+    private func point(_ index: Int, size: CGSize) -> CGPoint {
+        let angle = Double(index) * 2 * Double.pi / Double(max(visible.count, 1)) - Double.pi / 2
+        let radius = max(0, min(size.width, size.height) / 2 - 32)
+        return CGPoint(x: size.width / 2 + CGFloat(cos(angle)) * radius,
+                       y: size.height / 2 + CGFloat(sin(angle)) * radius)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("מוצגות עד 12 הרשומות האחרונות. קו מציין מקור משותף זמין.")
+                .font(.caption).foregroundStyle(.secondary)
+            GeometryReader { geometry in
+                ZStack {
+                    Canvas { context, size in
+                        for i in visible.indices {
+                            for j in visible.indices where j > i {
+                                if connected(visible[i], visible[j]) {
+                                    var line = Path()
+                                    line.move(to: point(i, size: size))
+                                    line.addLine(to: point(j, size: size))
+                                    context.stroke(line, with: .color(.purple.opacity(0.5)), lineWidth: 2)
+                                }
+                            }
+                        }
+                    }.accessibilityHidden(true)
+                    ForEach(visible.indices, id: \.self) { index in
+                        let note = visible[index]
+                        Button {
+                            selectedID = note.id
+                        } label: {
+                            ZStack {
+                                Circle().fill(selectedID == note.id ? Color.indigo : Color.purple)
+                                Text(String(index + 1)).font(.caption.bold()).foregroundStyle(.white)
+                            }.frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(note.title)
+                        .position(point(index, size: geometry.size))
+                    }
+                }
+            }.frame(height: 280)
+            if let note = visible.first(where: { $0.id == selectedID }) {
+                Text(note.title).font(.headline)
+                Text(note.text).font(.caption).textSelection(.enabled)
+            }
+            ForEach(visible.indices, id: \.self) { index in
+                Button("\(index + 1). \(visible[index].title)") {
+                    selectedID = visible[index].id
+                }.buttonStyle(.borderless)
+            }
+        }
+    }
+}
+
 struct GroundedArticleView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
@@ -615,6 +673,11 @@ struct GroundedArticleView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     NavigationLink {
                         List {
+                            Section("רשת מקורות משותפים") {
+                                MemoryNotebookGraph(notes: notebook, connected: { first, second in
+                                    !sharedSources(first, second).isEmpty
+                                })
+                            }
                             ForEach(notebook) { note in
                                 let related = relatedNotes(to: note)
                                 Section(note.title) {
