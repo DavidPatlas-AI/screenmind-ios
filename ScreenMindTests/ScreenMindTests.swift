@@ -935,6 +935,40 @@ import UIKit
         XCTAssertNotNil(AnswerGateway.endpoint("https://example.com/answer"))
     }
 
+    func testAttentionCenterDoesNotInventDeadlinesOrIncludeArchivedSources() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var due = idea("due", title: "משימה", text: "טקסט", at: now)
+        due.intent = .act
+        due.taskTitle = "בדיקה"
+        due.reviewedAt = now
+        due.taskDueAt = now
+        let offer = idea("offer", title: "מלגה", text: "הרשמה למלגה", at: now)
+        var archived = offer
+        archived.id = "archived"
+        archived.isArchived = true
+        let results = AttentionEngine.build(from: [due, offer, archived], now: now)
+        XCTAssertEqual(results.first?.kind, .due)
+        XCTAssertEqual(results.first?.due, now)
+        XCTAssertEqual(results.first(where: { $0.sourceID == "offer" })?.kind, .opportunity)
+        XCTAssertNil(results.first(where: { $0.sourceID == "offer" })?.due)
+        XCTAssertFalse(results.contains { $0.sourceID == "archived" })
+        XCTAssertEqual(Set(results.map(\.id)).count, results.count)
+    }
+
+    func testAttentionCenterLimitsAndCompletedTasks() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let offers = (0..<20).map { idea("offer-\($0)", title: "Scholarship", text: "Application", at: now) }
+        var completed = idea("completed", title: "בדיקה", text: "טקסט", at: now)
+        completed.intent = .act
+        completed.taskTitle = "בדיקה"
+        completed.reviewedAt = now
+        completed.taskDueAt = now
+        completed.taskCompletedAt = now
+        let results = AttentionEngine.build(from: offers + [completed], now: now)
+        XCTAssertEqual(results.filter { $0.kind == .opportunity }.count, AttentionEngine.perKind)
+        XCTAssertFalse(results.contains { $0.kind == .due && $0.sourceID == "completed" })
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
