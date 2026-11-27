@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {createHash,timingSafeEqual} from "node:crypto";
-import {createPilotGuard} from "./pilot-guard.mjs";
+import {createPilotGuard,readPilotUsage} from "./pilot-guard.mjs";
 
 // Private, operator-provisioned beta access. No public signup or billing.
 // Only random 256-bit tokens are supported; store their SHA-256 digests.
@@ -28,9 +28,11 @@ export function createTenantAuth(file,globalLedger){
     const ledger=ledgerKey(x.ledger);
     if(ledgers.has(ledger)||ledger===fs.realpathSync(file))throw Error("shared_ledger");
     ids.add(x.id);digests.add(x.tokenSha256);ledgers.add(ledger);
-    return {digest:Buffer.from(x.tokenSha256,"hex"),guard:createPilotGuard(ledger)};
+    return {id:x.id,ledger,digest:Buffer.from(x.tokenSha256,"hex"),guard:createPilotGuard(ledger)};
   });
   return {
+    // Operator-only local report; deliberately not exposed through HTTP.
+    usage(){return entries.map(({id,ledger})=>({id,...readPilotUsage(ledger)}));},
     authenticate(header){
       if(typeof header!=="string"||!/^Bearer [A-Za-z0-9_-]{43}$/.test(header))return null;
       const token=header.slice(7);
