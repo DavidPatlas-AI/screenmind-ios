@@ -7,8 +7,8 @@
 <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
 <key>CFBundlePackageType</key><string>XPC!</string>
-<key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>5.0.0</string>
+<key>CFBundleVersion</key><string>50</string>
 <key>NSPhotoLibraryUsageDescription</key><string>כדי להעביר צילום מסך שביקשת למחוק אל ״נמחקו לאחרונה״. הטקסט נשאר ב־ScreenMind.</string>
 <key>NSExtension</key><dict>
 <key>NSExtensionPointIdentifier</key><string>com.apple.share-services</string>
