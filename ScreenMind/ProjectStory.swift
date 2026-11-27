@@ -609,6 +609,38 @@ struct GroundedArticleView: View {
                 }
                 if !message.isEmpty { Text(message).font(.caption) }
             }
+            if !notebook.isEmpty {
+                Section("מפת קשרים מקומית") {
+                    Text("קשרים מבוססים על צילומי מקור משותפים שעדיין זמינים. אין הסקת קשר סמנטי אוטומטית.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    NavigationLink {
+                        List {
+                            ForEach(notebook) { note in
+                                let related = relatedNotes(to: note)
+                                Section(note.title) {
+                                    if related.isEmpty {
+                                        Text("אין קשרי מקור זמינים").font(.caption)
+                                    }
+                                    ForEach(related) { other in
+                                        DisclosureGroup {
+                                            Text(other.text).textSelection(.enabled)
+                                            ForEach(sharedSources(note, other), id: \.self) { id in
+                                                if let capture = library.capture(id), !capture.isArchived {
+                                                    Button("מקור משותף: " + capture.displayTitle) { open(capture) }
+                                                }
+                                            }
+                                        } label: {
+                                            Label(other.title, systemImage: "link")
+                                        }
+                                    }
+                                }
+                            }
+                        }.navigationTitle("מפת קשרים")
+                    } label: {
+                        Label("גלה קשרים בין רשומות", systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                }
+            }
             Section("מחברת הזיכרון — טיוטות AI") {
                 Text("שמירה מקומית מפורשת בלבד. הטיוטות עשויות להכיל מידע אישי ולהיכלל בגיבוי המכשיר. מחיקת צילום אינה מוחקת טיוטה שנשמרה.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -682,6 +714,20 @@ struct GroundedArticleView: View {
         .onDisappear {
             work?.cancel(); work = nil; running = false; token = ""; approved = false
         }
+    }
+    private func sharedSources(_ first: MemoryNotebookEntry, _ second: MemoryNotebookEntry) -> [String] {
+        Set(first.sourceIDs).intersection(second.sourceIDs).filter { id in
+            guard let capture = library.capture(id) else { return false }
+            return !capture.isArchived
+        }.sorted()
+    }
+    private func relatedNotes(to note: MemoryNotebookEntry) -> [MemoryNotebookEntry] {
+        notebook.filter { $0.id != note.id && !sharedSources(note, $0).isEmpty }
+            .sorted { lhs, rhs in
+                let left = sharedSources(note, lhs).count
+                let right = sharedSources(note, rhs).count
+                return left == right ? lhs.id.uuidString < rhs.id.uuidString : left > right
+            }
     }
     private var notebook: [MemoryNotebookEntry] {
         (try? JSONDecoder().decode([MemoryNotebookEntry].self, from: notebookData)) ?? []
