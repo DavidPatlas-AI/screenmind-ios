@@ -1,7 +1,7 @@
 name: Pilot economics offline tests
 on:
   push:
-    branches: [screenmind-v5-pilot-economics, screenmind-v5-tenant-pilot]
+    branches: [screenmind-v5-pilot-economics, screenmind-v5-tenant-pilot, screenmind-v5-pilot-admin]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,5 +13,5 @@ jobs:
         with:
           persist-credentials: false
       - run: node --check ai-gateway/server.mjs
-      - run: node --test ai-gateway/pilot-economics.test.mjs ai-gateway/pilot-guard.test.mjs ai-gateway/tenant-auth.test.mjs
+      - run: node --test ai-gateway/pilot-economics.test.mjs ai-gateway/pilot-guard.test.mjs ai-gateway/tenant-auth.test.mjs ai-gateway/pilot-admin.test.mjs
       - run: node ai-gateway/pilot-economics.mjs
