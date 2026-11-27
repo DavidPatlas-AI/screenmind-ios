@@ -24,6 +24,7 @@ on:
       - screenmind-v2-article-studio
       - screenmind-v2-grounded-writing
       - screenmind-v2-article-ai-ui
+      - screenmind-v2-memory-chat
 permissions:
   contents: read
 concurrency:
