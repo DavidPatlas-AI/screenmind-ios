@@ -719,6 +719,36 @@ struct GroundedArticleView: View {
                 if !message.isEmpty { Text(message).font(.caption) }
             }
             if !notebook.isEmpty {
+                Section("תובנות מהזיכרון") {
+                    Text("הצעות לבדיקה לפי גיל הרשומה ומקורות משותפים. אין כאן קביעה שפרויקט לא הושלם.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(notebook.filter { Date().timeIntervalSince($0.date) >= 30 * 86400 }
+                        .sorted { $0.date < $1.date }.prefix(3)) { note in
+                        DisclosureGroup {
+                            Text(note.text).textSelection(.enabled)
+                            ForEach(note.sourceIDs, id: \.self) { id in
+                                if let capture = library.capture(id), !capture.isArchived {
+                                    Button("פתח מקור: " + capture.displayTitle) { open(capture) }
+                                }
+                            }
+                        } label: {
+                            Label("כדאי לעיין שוב: " + note.title, systemImage: "clock")
+                        }
+                    }
+                    ForEach(notebook.filter { !relatedNotes(to: $0).isEmpty }.prefix(3)) { note in
+                        DisclosureGroup {
+                            ForEach(relatedNotes(to: note).prefix(3)) { other in
+                                Text(other.title).font(.headline)
+                                Text(other.text).font(.caption).textSelection(.enabled)
+                            }
+                        } label: {
+                            Label("אפשר לחבר ידע: " + note.title, systemImage: "link")
+                        }
+                    }
+                    if notebook.allSatisfy({ Date().timeIntervalSince($0.date) < 30 * 86400 && relatedNotes(to: $0).isEmpty }) {
+                        Text("אין כרגע הצעות לפי הכללים המקומיים.").font(.caption)
+                    }
+                }
                 Section("מפת קשרים מקומית") {
                     Text("קשרים מבוססים על צילומי מקור משותפים שעדיין זמינים. אין הסקת קשר סמנטי אוטומטית.")
                         .font(.caption).foregroundStyle(.secondary)
