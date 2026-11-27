@@ -332,6 +332,23 @@ struct MemorySearchView: View {
                 }
             }
             if let response, !running {
+                let candidates = Array(response.hits.compactMap { library.capture($0.id) }
+                    .filter { !$0.isArchived && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count >= 12 }
+                    .prefix(8))
+                if !candidates.isEmpty {
+                    Section("תשובה מתוך הזיכרון") {
+                        Text("נמצאו מקורות אפשריים לשאלה. בדוק אותם לפני יצירת טיוטה. החיפוש המקומי אינו תשובה מאומתת.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        NavigationLink {
+                            GroundedArticleView(title: GroundedArticleResult.clip(query, limit: 120),
+                                                captures: candidates, open: open)
+                        } label: {
+                            Label("הכן תשובה מ־\(candidates.count) מקורות באמצעות AI", systemImage: "sparkles")
+                        }
+                        Text("השליחה לשרת פרטי אופציונלית ודורשת אישור. ניתן להסיר מקורות ולערוך את הטקסט לפני השליחה.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 if response.hits.isEmpty {
                     ContentUnavailableView("לא נמצאה התאמה", systemImage: "magnifyingglass",
                                            description: Text("נסה שם, מילה אחרת או ביטוי קצר. צילומים שלא זוהה בהם טקסט עלולים שלא להופיע."))
