@@ -32,6 +32,7 @@ on:
       - screenmind-v2-project-bridges
       - screenmind-v2-scale-validation
       - screenmind-v2-search-performance
+      - screenmind-v2-beta-hardening
 permissions:
   contents: read
 concurrency:
