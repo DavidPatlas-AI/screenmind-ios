@@ -512,10 +512,19 @@ enum GroundedArticleClient {
     }
 }
 
+private struct MemoryNotebookEntry: Codable, Identifiable {
+    let id: UUID
+    let date: Date
+    let title: String
+    let text: String
+    let sourceIDs: [String]
+}
+
 struct GroundedArticleView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
     private let origins: [String: Capture]
+    @AppStorage("screenmind.memoryNotebook.v1") private var notebookData = Data()
     @State private var title: String
     @State private var items: [GroundedArticleInput]
     @State private var language = "he"
@@ -600,6 +609,28 @@ struct GroundedArticleView: View {
                 }
                 if !message.isEmpty { Text(message).font(.caption) }
             }
+            Section("מחברת הזיכרון — טיוטות AI") {
+                Text("שמירה מקומית מפורשת בלבד. הטיוטות עשויות להכיל מידע אישי ולהיכלל בגיבוי המכשיר. מחיקת צילום אינה מוחקת טיוטה שנשמרה.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(notebook) { note in
+                    DisclosureGroup(note.title) {
+                        Text(note.date, style: .date).font(.caption)
+                        Text(note.text).textSelection(.enabled)
+                        ForEach(note.sourceIDs, id: \.self) { id in
+                            if let capture = library.capture(id), !capture.isArchived {
+                                Button("פתח מקור: " + capture.displayTitle) { open(capture) }
+                            } else {
+                                Text("מקור אינו זמין").font(.caption)
+                            }
+                        }
+                        Button("מחק טיוטה", role: .destructive) {
+                            if let encoded = try? JSONEncoder().encode(notebook.filter { $0.id != note.id }) {
+                                notebookData = encoded
+                            }
+                        }
+                    }
+                }
+            }
             if let result, current {
                 Section("טיוטה לבדיקה — לא נשמרה") {
                     Text(result.title).font(.title.bold()).textSelection(.enabled)
@@ -620,6 +651,20 @@ struct GroundedArticleView: View {
                             }
                         }
                     }
+                    Button("שמור במחברת הזיכרון במכשיר") {
+                        guard current else { return }
+                        var notes = notebook
+                        let ids = Set(result.sections.flatMap { $0.evidence.map(\.id) })
+                        let note = MemoryNotebookEntry(id: UUID(), date: Date(), title: result.title,
+                            text: plainText(result), sourceIDs: ids.compactMap { origins[$0]?.id }.sorted())
+                        notes.insert(note, at: 0)
+                        guard notes.count <= 30, let encoded = try? JSONEncoder().encode(notes),
+                              encoded.count <= 2_000_000 else {
+                            message = "המחברת מלאה. מחק רשומה לפני שמירה נוספת."; return
+                        }
+                        notebookData = encoded
+                        message = "הטיוטה נשמרה במחברת המקומית."
+                    }
                     ShareLink(item: plainText(result)) {
                         Label("שתף טיוטת טקסט", systemImage: "square.and.arrow.up")
                     }
@@ -637,6 +682,9 @@ struct GroundedArticleView: View {
         .onDisappear {
             work?.cancel(); work = nil; running = false; token = ""; approved = false
         }
+    }
+    private var notebook: [MemoryNotebookEntry] {
+        (try? JSONDecoder().decode([MemoryNotebookEntry].self, from: notebookData)) ?? []
     }
     private func resetApproval() {
         approved = false; result = nil
