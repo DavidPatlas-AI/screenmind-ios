@@ -81,7 +81,7 @@ struct MemoryChatView: View {
                     Text("שאל את הזיכרון שלך").font(.title2.bold())
                     Text("החיפוש המקומי מציג קטעים מהצילומים שנשמרו. הוא אינו כותב תשובה גנרטיבית או מאמת את תוכנם.")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    Text("אין שליחה לענן. היסטוריית השיחה נשארת בזיכרון המסך בלבד.")
+                    Text("החיפוש המקומי אינו שולח מידע לענן. תשובת AI היא אפשרות נפרדת, לאחר בדיקה ואישור. היסטוריית השיחה נשארת בזיכרון המסך בלבד.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(turns) { turn in
@@ -98,6 +98,11 @@ struct MemoryChatView: View {
                                 .font(.subheadline)
                             ForEach(turn.evidence) { evidence in
                                 evidenceRow(evidence)
+                            }
+                            NavigationLink {
+                                AIAnswerView(turn: turn, open: open)
+                            } label: {
+                                Label("נסח תשובה בעזרת AI (ניסיוני)", systemImage: "sparkles")
                             }
                         }
                     }.id(turn.id)
