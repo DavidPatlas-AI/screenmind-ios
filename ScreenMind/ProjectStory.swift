@@ -522,9 +522,19 @@ private struct MemoryNotebookEntry: Codable, Identifiable {
 
 private struct MemoryNotebookGraph: View {
     let notes: [MemoryNotebookEntry]
+    let topic: (MemoryNotebookEntry) -> String
     let connected: (MemoryNotebookEntry, MemoryNotebookEntry) -> Bool
     @State private var selectedID: UUID?
-    private var visible: [MemoryNotebookEntry] { Array(notes.prefix(12)) }
+    @State private var selectedTopic: String?
+    private var topics: [String] { Array(Set(notes.map(topic))).sorted() }
+    private var visible: [MemoryNotebookEntry] {
+        Array(notes.filter { selectedTopic == nil || topic($0) == selectedTopic }.prefix(12))
+    }
+    private func color(_ note: MemoryNotebookEntry) -> Color {
+        let palette: [Color] = [.purple, .blue, .teal, .orange, .pink, .indigo, .green]
+        let index = topics.firstIndex(of: topic(note)) ?? 0
+        return palette[index % palette.count]
+    }
     @State private var yaw = 0.0
     @State private var pitch = 0.0
     @State private var zoom = 0.85
@@ -549,6 +559,19 @@ private struct MemoryNotebookGraph: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("מוצגות עד 12 הרשומות האחרונות. קו מציין מקור משותף זמין.")
                 .font(.caption).foregroundStyle(.secondary)
+            Picker("סינון לפי נושא", selection: $selectedTopic) {
+                Text("כל הנושאים").tag(nil as String?)
+                ForEach(topics, id: \.self) { name in
+                    Text(name).tag(Optional(name))
+                }
+            }
+            ForEach(topics, id: \.self) { name in
+                if let sample = notes.first(where: { topic($0) == name }) {
+                    Label(name + " · " + String(notes.filter { topic($0) == name }.count),
+                          systemImage: "circle.fill").foregroundStyle(color(sample))
+                        .font(.caption)
+                }
+            }
             GeometryReader { geometry in
                 ZStack {
                     Canvas { context, size in
@@ -569,9 +592,10 @@ private struct MemoryNotebookGraph: View {
                             selectedID = note.id
                         } label: {
                             ZStack {
-                                Circle().fill(selectedID == note.id ? Color.indigo : Color.purple)
+                                Circle().fill(color(note))
                                 Text(String(index + 1)).font(.caption.bold()).foregroundStyle(.white)
                             }.frame(width: 44, height: 44)
+                            .overlay(Circle().strokeBorder(Color.primary, lineWidth: selectedID == note.id ? 3 : 0))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(note.title)
@@ -593,6 +617,7 @@ private struct MemoryNotebookGraph: View {
             }
             if let note = visible.first(where: { $0.id == selectedID }) {
                 Text(note.title).font(.headline)
+                Text(topic(note)).font(.caption).foregroundStyle(.secondary)
                 Text(note.text).font(.caption).textSelection(.enabled)
             }
             ForEach(visible.indices, id: \.self) { index in
@@ -700,7 +725,7 @@ struct GroundedArticleView: View {
                     NavigationLink {
                         List {
                             Section("רשת מקורות משותפים") {
-                                MemoryNotebookGraph(notes: notebook, connected: { first, second in
+                                MemoryNotebookGraph(notes: notebook, topic: notebookTopic, connected: { first, second in
                                     !sharedSources(first, second).isEmpty
                                 })
                             }
@@ -803,6 +828,20 @@ struct GroundedArticleView: View {
         .onDisappear {
             work?.cancel(); work = nil; running = false; token = ""; approved = false
         }
+    }
+    private func notebookTopic(_ note: MemoryNotebookEntry) -> String {
+        var counts: [String: Int] = [:]
+        for id in Set(note.sourceIDs) {
+            if let capture = library.capture(id), !capture.isArchived {
+                counts[capture.effectiveCollection, default: 0] += 1
+            }
+        }
+        let ranked = counts.sorted { lhs, rhs in
+            lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+        }
+        guard let first = ranked.first else { return "ללא נושא" }
+        if ranked.count > 1 && ranked[1].value == first.value { return "מספר נושאים" }
+        return first.key
     }
     private func sharedSources(_ first: MemoryNotebookEntry, _ second: MemoryNotebookEntry) -> [String] {
         Set(first.sourceIDs).intersection(second.sourceIDs).filter { id in
