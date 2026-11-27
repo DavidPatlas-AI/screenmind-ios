@@ -1030,6 +1030,82 @@ import UIKit
         XCTAssertTrue(report.bridges.isEmpty)
     }
 
+    func testIntegratedLibraryScale() {
+        // Synthetic metadata and OCR strings only: no photos, disk writes or cloud.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let texts = [
+            "תיעוד מערכת בדיקות ממשק זיכרון גיבויים",
+            "Hydraulic pump inspection maintenance report",
+            "Документация настройка системы проверка",
+            "SwiftUI layout accessibility rendering",
+            "מלגה הרשמה תנאי קבלה מסמכים",
+            "Invoice payment deadline supplier reference"
+        ]
+        for size in [100, 1000, 3000, 10000] {
+            var captures = (0..<size).map { i -> Capture in
+                var item = idea("scale-\(i)", title: "Record \(i)",
+                    text: texts[i % texts.count] + " github.com/fixture/project-\(i % 12)",
+                    collection: "מרחב \(i % 8)", at: now.addingTimeInterval(Double(-i * 60)))
+                item.isArchived = i.isMultiple(of: 13)
+                if i.isMultiple(of: 3) { item.photoCreatedAt = item.createdAt }
+                return item
+            }
+            // Known positive, an archived decoy and an explicitly approved task.
+            captures[1].title = "quasaranchor"
+            captures[1].text += " quasaranchor"
+            captures[0].title = "quasaranchor"
+            captures[0].text += " quasaranchor"
+            captures[1].intent = .act
+            captures[1].taskTitle = "בדיקת עומס"
+            captures[1].reviewedAt = now
+            captures[1].taskDueAt = now
+
+            let active = captures.filter { !$0.isArchived }
+            let ids = Set(active.map(\.id))
+            var timings: [String] = []
+            func timed<T>(_ label: String, _ work: () -> T) -> T {
+                let start = ProcessInfo.processInfo.systemUptime
+                let result = work()
+                let elapsed = ProcessInfo.processInfo.systemUptime - start
+                timings.append("\(label)=\(String(format: "%.3f", elapsed))")
+                return result
+            }
+            let index = timed("index") { MemoryLexicalIndex(captures: captures) }
+            let hits = timed("search") { index.search("quasaranchor", limit: 60) }
+            XCTAssertEqual(hits.first?.id, "scale-1", "n=\(size)")
+            XCTAssertTrue(hits.allSatisfy { ids.contains($0.id) })
+            XCTAssertTrue(index.search("neverfoundtokenxyz").isEmpty)
+            let turn = timed("chat") {
+                MemoryChat.makeTurn(question: "quasaranchor", captures: captures, hits: hits, narrowed: false)
+            }
+            XCTAssertEqual(turn.scopeCount, active.count)
+            XCTAssertEqual(turn.evidence.first?.id, "scale-1")
+            XCTAssertLessThanOrEqual(turn.evidence.count, MemoryChat.maxEvidence)
+
+            let graph = timed("graph") { BrainGraph.build(from: captures, now: now) }
+            XCTAssertEqual(graph.node(BrainGraph.rootID)?.count, active.count)
+            XCTAssertEqual(Set(graph.nodes.values.compactMap(\.captureID)), ids)
+            let projects = timed("projects") { ProjectCluster.build(from: captures) }
+            XCTAssertEqual(projects.count, 12)
+            XCTAssertEqual(Set(projects.flatMap(\.sources).map(\.id)), ids)
+            let bridges = timed("bridges") { ProjectBridgeEngine.build(from: captures) }
+            XCTAssertEqual(bridges.examinedProjects, projects.count)
+            XCTAssertLessThanOrEqual(bridges.sampledSources, projects.count * ProjectBridgeEngine.sourceLimit)
+            XCTAssertLessThanOrEqual(bridges.bridges.count, ProjectBridgeEngine.resultLimit)
+            XCTAssertTrue(bridges.bridges.flatMap(\.evidence).allSatisfy {
+                ids.contains($0.leftSourceID) && ids.contains($0.rightSourceID) && $0.leftSourceID != $0.rightSourceID
+            })
+            let attention = timed("attention") { AttentionEngine.build(from: captures, now: now) }
+            XCTAssertTrue(attention.contains { $0.sourceID == "scale-1" && $0.kind == .due && $0.due == now })
+            XCTAssertLessThanOrEqual(attention.count, AttentionItem.Kind.allCases.count * AttentionEngine.perKind)
+            XCTAssertTrue(attention.allSatisfy { ids.contains($0.sourceID) })
+            let selected = timed("article") { ArticleSelection.sources(from: captures, ids: Set(captures.map(\.id))) }
+            XCTAssertEqual(selected.count, min(ArticleSelection.limit, active.count))
+            XCTAssertTrue(selected.allSatisfy { ids.contains($0.id) })
+            print("INTEGRATED_SCALE n=\(size) active=\(active.count) projects=\(projects.count) " + timings.joined(separator: " "))
+        }
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
