@@ -31,9 +31,10 @@ export async function createBedrockProvider(env=process.env, load=()=>import("@a
   }
   const {BedrockRuntimeClient,ConverseCommand}=await load();
   const client=new BedrockRuntimeClient({region,maxAttempts:1});
-  return async ({body,schema,instructions,signal})=>{
+  return async ({body,schema,instructions,signal,observeUsage})=>{
     const request=buildConverseRequest({modelId,body,schema,instructions});
     const response=await client.send(new ConverseCommand(request),{abortSignal:signal});
+    observeUsage?.(response);
     return parseConverseResponse(response);
   };
 }
