@@ -999,6 +999,37 @@ import UIKit
         XCTAssertFalse(ReminderPolicy.validDate(now.addingTimeInterval(366*86400), now: now))
     }
 
+    func testProjectBridgesUseEvidenceFromDistinctProjects() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let a = idea("a", title: "הצפנה וגיבוי", text: "הצפנה גיבויים github.com/alfa/one", at: date)
+        let b = idea("b", title: "תיעוד", text: "github.com/alfa/one", at: date)
+        let c = idea("c", title: "הצפנה וגיבוי", text: "הצפנה גיבויים github.com/beta/two", at: date.addingTimeInterval(86400*90))
+        let d = idea("d", title: "בדיקות", text: "github.com/beta/two", at: date)
+        let report = ProjectBridgeEngine.build(from: [a,b,c,d])
+        XCTAssertEqual(report.examinedProjects, 2)
+        XCTAssertEqual(report.bridges.count, 1)
+        let bridge = report.bridges.first
+        XCTAssertTrue(bridge?.evidence.contains { $0.term == "הצפנה" } ?? false)
+        XCTAssertTrue(bridge?.evidence.contains { $0.term == "גיבויים" } ?? false)
+        XCTAssertTrue(bridge?.evidence.allSatisfy { Set([$0.leftSourceID,$0.rightSourceID]) == Set(["a","c"]) } ?? false)
+        var archived = c
+        archived.isArchived = true
+        XCTAssertTrue(ProjectBridgeEngine.build(from: [a,b,archived,d]).bridges.isEmpty)
+    }
+
+    func testProjectBridgesIgnoreGenericWordsAndProjectURLs() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let items = [
+            idea("a", title: "project code", text: "github.com/alfa/one", at: date),
+            idea("b", title: "project code", text: "github.com/alfa/one", at: date),
+            idea("c", title: "project code", text: "github.com/beta/two", at: date),
+            idea("d", title: "project code", text: "github.com/beta/two", at: date)
+        ]
+        let report = ProjectBridgeEngine.build(from: items)
+        XCTAssertEqual(report.examinedProjects, 2)
+        XCTAssertTrue(report.bridges.isEmpty)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
