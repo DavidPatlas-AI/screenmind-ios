@@ -525,11 +525,25 @@ private struct MemoryNotebookGraph: View {
     let connected: (MemoryNotebookEntry, MemoryNotebookEntry) -> Bool
     @State private var selectedID: UUID?
     private var visible: [MemoryNotebookEntry] { Array(notes.prefix(12)) }
+    @State private var yaw = 0.0
+    @State private var pitch = 0.0
+    @State private var zoom = 0.85
+    private func projection(_ index: Int, size: CGSize) -> (point: CGPoint, depth: Double) {
+        let n = Double(max(visible.count, 1))
+        let y = 1 - 2 * (Double(index) + 0.5) / n
+        let ring = sqrt(max(0, 1 - y * y))
+        let angle = Double(index) * Double.pi * (3 - sqrt(5.0)) + yaw
+        let x = ring * cos(angle)
+        let z = ring * sin(angle)
+        let vertical = y * cos(pitch) - z * sin(pitch)
+        let depth = y * sin(pitch) + z * cos(pitch)
+        let perspective = 3 / (3 - depth)
+        let radius = max(0, min(size.width, size.height) / 2 - 36) * CGFloat(zoom)
+        return (CGPoint(x: size.width / 2 + CGFloat(x * perspective) * radius,
+                        y: size.height / 2 + CGFloat(vertical * perspective) * radius), depth)
+    }
     private func point(_ index: Int, size: CGSize) -> CGPoint {
-        let angle = Double(index) * 2 * Double.pi / Double(max(visible.count, 1)) - Double.pi / 2
-        let radius = max(0, min(size.width, size.height) / 2 - 32)
-        return CGPoint(x: size.width / 2 + CGFloat(cos(angle)) * radius,
-                       y: size.height / 2 + CGFloat(sin(angle)) * radius)
+        projection(index, size: size).point
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -561,10 +575,22 @@ private struct MemoryNotebookGraph: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(note.title)
+                        .scaleEffect(CGFloat(0.85 + 0.15 * projection(index, size: geometry.size).depth))
+                        .zIndex(projection(index, size: geometry.size).depth + 2)
                         .position(point(index, size: geometry.size))
                     }
                 }
             }.frame(height: 280)
+            VStack(alignment: .leading) {
+                Text("סיבוב אופקי").font(.caption)
+                Slider(value: $yaw, in: -Double.pi...Double.pi)
+                Text("הטיה אנכית").font(.caption)
+                Slider(value: $pitch, in: -1.5...1.5)
+                Text("מרחק תצוגה").font(.caption)
+                Slider(value: $zoom, in: 0.45...1.0)
+                Button("אפס תצוגה") { yaw = 0; pitch = 0; zoom = 0.85 }
+                    .buttonStyle(.borderless)
+            }
             if let note = visible.first(where: { $0.id == selectedID }) {
                 Text(note.title).font(.headline)
                 Text(note.text).font(.caption).textSelection(.enabled)
