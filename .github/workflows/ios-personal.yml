@@ -25,6 +25,7 @@ on:
       - screenmind-v2-grounded-writing
       - screenmind-v2-article-ai-ui
       - screenmind-v2-memory-chat
+      - screenmind-v2-grounded-qa
 permissions:
   contents: read
 concurrency:
@@ -41,7 +42,7 @@ jobs:
       - name: Check AI gateway JavaScript syntax
         run: |
           node --check ai-gateway/server.mjs
-          node --test ai-gateway/bedrock.test.mjs ai-gateway/pilot-guard.test.mjs ai-gateway/gemini.test.mjs ai-gateway/model-lab/lab.test.mjs ai-gateway/article.test.mjs
+          node --test ai-gateway/bedrock.test.mjs ai-gateway/pilot-guard.test.mjs ai-gateway/gemini.test.mjs ai-gateway/model-lab/lab.test.mjs ai-gateway/article.test.mjs ai-gateway/answer.test.mjs
       - name: Generate standalone personal edition
         run: SCREENMIND_PERSONAL=1 node scripts/generate-project.mjs
       - name: Test personal edition on simulator
