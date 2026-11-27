@@ -1,0 +1,27 @@
+name: ScreenMind Swift checks
+on:
+  push:
+    branches: [screenmind-v2-memory-answers]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift syntax check
+        run: |
+          find ScreenMind Shared -name '*.swift' -print0 | while IFS= read -r -d '' file; do
+            swiftc -frontend -parse "$file" || exit 1
+          done
+      - name: Simulator build without signing
+        run: |
+          set -euo pipefail
+          if [ ! -d ScreenMind.xcodeproj ] && [ -f project.yml ]; then
+            brew install xcodegen
+            xcodegen generate
+          fi
+          xcodebuild -project ScreenMind.xcodeproj -scheme ScreenMind -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
