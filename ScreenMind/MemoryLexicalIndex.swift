@@ -7,6 +7,8 @@ struct MemoryLexicalIndex: Sendable {
         let id: String
         let weights: [String: Double]
         let related: [String: Double]
+        let title: String
+        let text: String
     }
     private let documents: [Document]
     private let frequencies: [String: Int]
@@ -18,7 +20,6 @@ struct MemoryLexicalIndex: Sendable {
     // Deliberately small, auditable vocabulary. Ambiguous aliases are omitted.
     private static let concepts: [[String]] = [
         ["משכנתה","משכנתא","mortgage","ипотека"],
-        ["חשבונית","invoice","factura","facture","rechnung","счёт"],
         ["מתכון","recipe","рецепт","receta","recette","rezept"],
         ["טיסה","flight","рейс","vuelo"],
         ["מלון","hotel","отель","hôtel"],
@@ -41,7 +42,10 @@ struct MemoryLexicalIndex: Sendable {
         ["משרה","דרושים","vacancy","вакансия"],
         ["מבחן","בחינה","exam","экзамен"],
         ["מצגת","presentation","презентация"],
-        ["תזכורת","reminder","напоминание"]
+        ["תזכורת","תזכורות","reminder","напоминание"],
+        ["מסמך","מסמכים","document","документ"],
+        ["משימה","משימות","task","задача"],
+        ["חשבונית","חשבוניות","invoice","factura","facture","rechnung","счёт"]
     ]
     private static let conceptKeys: [String: String] = {
         var result: [String: String] = [:]
@@ -88,13 +92,16 @@ struct MemoryLexicalIndex: Sendable {
                 for key in Self.keys(word) { related[key] = max(related[key] ?? 0, weight) }
             }
             for key in related.keys { counts[key, default: 0] += 1 }
-            docs.append(Document(id: capture.id, weights: weights, related: related))
+            docs.append(Document(id: capture.id, weights: weights, related: related,
+                                 title: Self.normalize(capture.title), text: Self.normalize(capture.text)))
         }
         documents = docs
         frequencies = counts
     }
     func search(_ query: String, limit: Int = 60) -> [MemorySearchHit] {
-        let queryTerms = Self.terms(String(query.prefix(500)))
+        let normalizedQuery = Self.normalize(String(query.prefix(500)))
+        let queryTerms = Self.terms(normalizedQuery)
+        let phrase = normalizedQuery.split(separator: " ").filter { !Self.stopWords.contains(String($0)) }.joined(separator: " ")
         guard !queryTerms.isEmpty, limit > 0 else { return [] }
         let queries = queryTerms.map { term -> (String, Set<String>, Double) in
             let keys = Self.keys(term)
@@ -125,8 +132,11 @@ struct MemoryLexicalIndex: Sendable {
             else if matched == queries.count { kind = .related; base = 75 }
             else { kind = .partial; base = 50 }
             // Bound the bonus to keep match tiers stable regardless of corpus size.
+            let phraseBonus: Double = queryTerms.count > 1 && !phrase.isEmpty
+                ? ((" " + doc.title + " ").contains(" " + phrase + " ") ? 8
+                   : ((" " + doc.text + " ").contains(" " + phrase + " ") ? 4 : 0)) : 0
             results.append(MemorySearchHit(id: doc.id,
-                score: base + min(20, score / Double(queries.count)), match: kind))
+                score: base + min(20, score / Double(queries.count) + phraseBonus), match: kind))
         }
         return Array(results.sorted {
             $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score
