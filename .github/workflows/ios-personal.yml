@@ -21,6 +21,7 @@ on:
       - screenmind-v2-encrypted-backup
       - screenmind-v2-home-polish
       - screenmind-v2-spatial-brain
+      - screenmind-v2-article-studio
 permissions:
   contents: read
 concurrency:
