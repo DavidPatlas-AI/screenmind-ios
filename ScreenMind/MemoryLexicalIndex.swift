@@ -32,7 +32,16 @@ struct MemoryLexicalIndex: Sendable {
         ["גיבוי","backup","резервирование","sauvegarde"],
         ["רחפן","drone","дрон"],
         ["מלגה","scholarship","стипендия","bourse"],
-        ["משאית","truck","грузовик","camion"]
+        ["משאית","truck","грузовик","camion"],
+        ["רכישה","קנייה","קניה","purchase","покупка"],
+        ["תקלה","באג","bug","неисправность"],
+        ["אבטחה","security","безопасность"],
+        ["הצפנה","encryption","шифрование"],
+        ["הוצאות","expenditure","expenses","расходы"],
+        ["משרה","דרושים","vacancy","вакансия"],
+        ["מבחן","בחינה","exam","экзамен"],
+        ["מצגת","presentation","презентация"],
+        ["תזכורת","reminder","напоминание"]
     ]
     private static let conceptKeys: [String: String] = {
         var result: [String: String] = [:]
