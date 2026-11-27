@@ -538,8 +538,8 @@ private struct MemoryNotebookGraph: View {
     @State private var yaw = 0.0
     @State private var pitch = 0.0
     @State private var zoom = 0.85
-    private func projection(_ index: Int, size: CGSize) -> (point: CGPoint, depth: Double) {
-        let n = Double(max(visible.count, 1))
+    private func projection(_ index: Int, count: Int, size: CGSize) -> (point: CGPoint, depth: Double) {
+        let n = Double(max(count, 1))
         let y = 1 - 2 * (Double(index) + 0.5) / n
         let ring = sqrt(max(0, 1 - y * y))
         let angle = Double(index) * Double.pi * (3 - sqrt(5.0)) + yaw
@@ -552,11 +552,14 @@ private struct MemoryNotebookGraph: View {
         return (CGPoint(x: size.width / 2 + CGFloat(x * perspective) * radius,
                         y: size.height / 2 + CGFloat(vertical * perspective) * radius), depth)
     }
-    private func point(_ index: Int, size: CGSize) -> CGPoint {
-        projection(index, size: size).point
-    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let nodes = visible
+        let edges = nodes.indices.flatMap { i in
+            nodes.indices.filter { j in j > i && connected(nodes[i], nodes[j]) }.map { (i, $0) }
+        }
+        let colors = nodes.map(color)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("מוצגות עד 12 הרשומות האחרונות. קו מציין מקור משותף זמין.")
                 .font(.caption).foregroundStyle(.secondary)
             Picker("סינון לפי נושא", selection: $selectedTopic) {
@@ -575,33 +578,29 @@ private struct MemoryNotebookGraph: View {
             GeometryReader { geometry in
                 ZStack {
                     Canvas { context, size in
-                        for i in visible.indices {
-                            for j in visible.indices where j > i {
-                                if connected(visible[i], visible[j]) {
+                        for (i, j) in edges {
                                     var line = Path()
-                                    line.move(to: point(i, size: size))
-                                    line.addLine(to: point(j, size: size))
+                                    line.move(to: projection(i, count: nodes.count, size: size).point)
+                                    line.addLine(to: projection(j, count: nodes.count, size: size).point)
                                     context.stroke(line, with: .color(.purple.opacity(0.5)), lineWidth: 2)
-                                }
-                            }
                         }
                     }.accessibilityHidden(true)
-                    ForEach(visible.indices, id: \.self) { index in
-                        let note = visible[index]
+                    ForEach(nodes.indices, id: \.self) { index in
+                        let note = nodes[index]
                         Button {
                             selectedID = note.id
                         } label: {
                             ZStack {
-                                Circle().fill(color(note))
+                                Circle().fill(colors[index])
                                 Text(String(index + 1)).font(.caption.bold()).foregroundStyle(.white)
                             }.frame(width: 44, height: 44)
                             .overlay(Circle().strokeBorder(Color.primary, lineWidth: selectedID == note.id ? 3 : 0))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(note.title)
-                        .scaleEffect(CGFloat(0.85 + 0.15 * projection(index, size: geometry.size).depth))
-                        .zIndex(projection(index, size: geometry.size).depth + 2)
-                        .position(point(index, size: geometry.size))
+                        .scaleEffect(CGFloat(0.85 + 0.15 * projection(index, count: nodes.count, size: geometry.size).depth))
+                        .zIndex(projection(index, count: nodes.count, size: geometry.size).depth + 2)
+                        .position(projection(index, count: nodes.count, size: geometry.size).point)
                     }
                 }
             }.frame(height: 280)
@@ -615,14 +614,14 @@ private struct MemoryNotebookGraph: View {
                 Button("אפס תצוגה") { yaw = 0; pitch = 0; zoom = 0.85 }
                     .buttonStyle(.borderless)
             }
-            if let note = visible.first(where: { $0.id == selectedID }) {
+            if let note = nodes.first(where: { $0.id == selectedID }) {
                 Text(note.title).font(.headline)
                 Text(topic(note)).font(.caption).foregroundStyle(.secondary)
                 Text(note.text).font(.caption).textSelection(.enabled)
             }
-            ForEach(visible.indices, id: \.self) { index in
-                Button("\(index + 1). \(visible[index].title)") {
-                    selectedID = visible[index].id
+            ForEach(nodes.indices, id: \.self) { index in
+                Button("\(index + 1). \(nodes[index].title)") {
+                    selectedID = nodes[index].id
                 }.buttonStyle(.borderless)
             }
         }
