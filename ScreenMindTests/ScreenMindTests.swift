@@ -370,6 +370,16 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testHebrewPhraseRankingAndPluralConcepts() {
+        let now = Date()
+        let phrase = idea("z-phrase", title: "ניהול משימות", text: "כלי עבודה", at: now)
+        let reversed = idea("a-reversed", title: "משימות ניהול", text: "כלי עבודה", at: now)
+        let invoice = idea("invoice", title: "חשבוניות", text: "2026", at: now)
+        let index = MemoryLexicalIndex(captures: [reversed, invoice, phrase])
+        XCTAssertEqual(index.search("ניהול משימות").first?.id, "z-phrase")
+        XCTAssertEqual(index.search("חשבונית").first?.id, "invoice")
+        XCTAssertEqual(index.search("חשבונית").first?.match, .related)
+    }
     func testSemanticCandidatesCoverEntireLargeLibrary() {
         let now = Date()
         var captures = (0..<3000).map { index in
