@@ -1106,6 +1106,35 @@ import UIKit
         }
     }
 
+    func testIndexedCandidatesMatchExhaustiveScoring() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var items = [
+            idea("a", title: "מדריך גיבוי", text: "הצפנה backup", at: now),
+            idea("b", title: "Backup archive", text: "encryption checksums", at: now),
+            idea("c", title: "Рецепт", text: "картофель", at: now),
+            idea("d", title: "not related", text: "green paper", collection: "גיבוי", at: now),
+            idea("e", title: "משכנתא", text: "תקציב", at: now),
+            idea("f", title: "quasaranchor", text: "unique source", at: now)
+        ]
+        var archived = idea("archived", title: "quasaranchor", text: "backup", at: now)
+        archived.isArchived = true
+        items.append(archived)
+        items += (0..<3000).map { i in
+            idea("noise-\(i)", title: "Record \(i)", text: i.isMultiple(of: 2) ? "green paper" : "blue pencil", at: now)
+        }
+        let index = MemoryLexicalIndex(captures: items)
+        for query in ["גיבוי","הגיבוי","backup encryption","מתכון","mortgage","תקציב","quasaranchor","green paper","blue unknown","neverfoundxyz","איפה שמרתי את"] {
+            let optimized = index.search(query, limit: 60)
+            let exhaustive = index.search(query, limit: 60, exhaustive: true)
+            XCTAssertEqual(optimized.map(\.id), exhaustive.map(\.id), query)
+            XCTAssertEqual(optimized.map(\.score), exhaustive.map(\.score), query)
+            XCTAssertEqual(optimized.map(\.match.rawValue), exhaustive.map(\.match.rawValue), query)
+        }
+        XCTAssertEqual(index.candidateCount("quasaranchor"), 1)
+        XCTAssertEqual(index.candidateCount("neverfoundxyz"), 0)
+        print("CANDIDATE_BENCHMARK n=\(items.count) rareCandidates=\(index.candidateCount("quasaranchor"))")
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
