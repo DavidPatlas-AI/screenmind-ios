@@ -302,7 +302,7 @@ struct ImportReport: Identifiable, Sendable {
             }
         } catch { self.error = error.localizedDescription }
     }
-    func exportLibraryBackup(to folder: URL) async throws -> LibraryBackup.ExportResult {
+    func exportLibraryBackup(to folder: URL, encryption: BackupEncryption? = nil) async throws -> LibraryBackup.ExportResult {
         guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
             throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
         }
@@ -312,10 +312,17 @@ struct ImportReport: Identifiable, Sendable {
         return try await Task.detached(priority: .userInitiated) {
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
-            return try LibraryBackup.export(vault: vault,to: folder)
+            let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
+            let home = URL(fileURLWithPath: NSHomeDirectory()).resolvingSymlinksInPath().standardizedFileURL.path
+            let root = vault.root.resolvingSymlinksInPath().standardizedFileURL.path
+            guard path != home, !path.hasPrefix(home + "/"),
+                  path != root, !path.hasPrefix(root + "/") else {
+                throw NativeError.message("בחר תיקייה מחוץ לאחסון הפנימי של ScreenMind.")
+            }
+            return try LibraryBackup.export(vault: vault,to: folder,encryption: encryption)
         }.value
     }
-    func restoreLibraryBackup(from folder: URL) async throws -> LibraryBackup.RestoreResult {
+    func restoreLibraryBackup(from folder: URL, encryption: BackupEncryption? = nil) async throws -> LibraryBackup.RestoreResult {
         guard !busy, !scanLoopActive, !startGate, albumScan.status != .running, let vault else {
             throw NativeError.message("יש להמתין לסיום הפעולה הנוכחית.")
         }
@@ -326,7 +333,7 @@ struct ImportReport: Identifiable, Sendable {
         return try await Task.detached(priority: .userInitiated) {
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
-            return try LibraryBackup.restore(folder,to: vault)
+            return try LibraryBackup.restore(folder,to: vault,encryption: encryption)
         }.value
     }
     func restoreBackup(_ verified: VerifiedBackup) async throws -> VerifiedBackup.RestoreReport {
