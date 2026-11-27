@@ -342,6 +342,18 @@ struct ArticleStudioView: View {
                         Label("צור טיוטה מקומית", systemImage: "doc.text")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }.buttonStyle(.borderedProminent)
+                    if valid.count <= 8 {
+                        NavigationLink {
+                            AIArticleView(title: ArticleSelection.title(title),
+                                          captures: ArticleSelection.sources(from: library.active, ids: valid),
+                                          open: open)
+                        } label: {
+                            Label("כתוב בעזרת AI (ניסיוני)", systemImage: "sparkles")
+                        }
+                    } else {
+                        Text("לכתיבה עם AI בחר עד 8 מקורות. הטיוטה המקומית תומכת בעד 40.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Button("נקה בחירה", role: .destructive) { selected.removeAll() }
                 }
             }
