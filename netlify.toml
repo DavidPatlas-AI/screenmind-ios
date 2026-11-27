@@ -1,0 +1,11 @@
+[build]
+  command = "mkdir -p startup-site-dist && cp startup-site/index.html startup-site/en.html startup-site-dist/"
+  publish = "startup-site-dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
