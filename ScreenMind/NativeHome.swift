@@ -216,133 +216,104 @@ struct NativeHome: View {
             .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
         }.buttonStyle(.plain)
     }
+    private func featureLabel(_ title: String, subtitle: String, icon: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(NativeTheme.accent)
+                .frame(width: 44, height: 44)
+                .background(NativeTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.backward").font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary).accessibilityHidden(true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
     private var home: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("הידע שלך, במקום אחד").font(.largeTitle.weight(.semibold))
-                    Text("הצילומים מתארגנים לנושאים. אין צורך למיין אחד־אחד.").foregroundStyle(.secondary)
-                }.padding(.top, 12)
+                    Text("חפש, גלה וחזור למה שחשוב לך.").foregroundStyle(.secondary)
+                }.padding(.top, 8)
                 if !library.captures.isEmpty {
                     homeSearch
-                    NavigationLink {
-                        MemoryChatView(open: { selected = $0 })
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "bubble.left.and.bubble.right").font(.title2)
-                                .foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("שיחה עם הזיכרון").font(.headline).foregroundStyle(.primary)
-                                Text("שאל שאלות וקבל קטעים מהמקורות").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
-                        }.padding(16).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
-                    }.buttonStyle(.plain)
                     libraryOverview
-                    NavigationLink {
-                        AttentionCenterView(open: { selected = $0 })
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "bell.badge").font(.title2)
-                                .foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("מרכז תשומת הלב").font(.headline).foregroundStyle(.primary)
-                                Text("משימות, הזדמנויות ומידע שכדאי לבדוק").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
-                        }.padding(16).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
-                    }.buttonStyle(.plain)
+                    if !library.pending.isEmpty {
+                        Button {
+                            reviewIDs = nil
+                            review = true
+                        } label: {
+                            Label("סקירה ידנית (רשות)", systemImage: "checkmark.square")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }.buttonStyle(.bordered).accessibilityLabel("לסקירה")
+                    }
                 }
                 albumCard
                 if library.captures.isEmpty {
                     ContentUnavailableView {
                         Label("מתחילים בכמה צילומים.", systemImage: "photo.on.rectangle.angled")
                     } description: {
+                        #if SCREENMIND_PERSONAL
+                        Text("בחר צילומים בכפתור + או סרוק את האלבום באישור גישה. המקור נשמר לפני זיהוי הטקסט.")
+                        #else
                         Text("בחר צילומים בכפתור +, או שתף תמונה מכל אפליקציה אל ScreenMind. המקור נשמר לפני זיהוי הטקסט.")
+                        #endif
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label("הידע שלך", systemImage: "sparkles").font(.title2.bold())
-                        Text("\(library.recognizedCount) צילומים עם טקסט · \(library.collections.count) נושאים")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("לגלות ולזכור").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                        NavigationLink {
+                            MemoryChatView(open: { selected = $0 })
+                        } label: {
+                            featureLabel("שיחה עם הזיכרון", subtitle: "שאל שאלה ומצא מקורות", icon: "bubble.left.and.bubble.right")
+                        }.buttonStyle(.plain).accessibilityIdentifier("home.memoryChat")
+                        NavigationLink {
+                            AttentionCenterView(open: { selected = $0 })
+                        } label: {
+                            featureLabel("מרכז תשומת הלב", subtitle: "משימות והזדמנויות לבדיקה", icon: "bell.badge")
+                        }.buttonStyle(.plain).accessibilityIdentifier("home.attention")
                         NavigationLink {
                             MemoryDiscoveryView(open: { selected = $0 })
                         } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "clock.arrow.circlepath").font(.title2)
-                                    .foregroundStyle(NativeTheme.accent)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("גלה מחדש").font(.headline)
-                                    Text("קשרים ישנים וחדשים, עם המקורות").font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.backward").font(.caption)
-                            }.padding(14)
-                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                            featureLabel("גלה מחדש", subtitle: "חזור לרעיונות ולמקורות ישנים", icon: "clock.arrow.circlepath")
                         }.buttonStyle(.plain)
+                        Button { tab = 2 } label: {
+                            featureLabel("המוח של הרעיונות", subtitle: "מפת הנושאים והקשרים", icon: "brain.head.profile")
+                        }.buttonStyle(.plain).accessibilityLabel("המוח של הרעיונות")
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ליצור ולפעול").font(.title2.bold()).accessibilityAddTraits(.isHeader)
                         NavigationLink {
                             ArticleStudioView(open: { selected = $0 })
                         } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "doc.text").font(.title2).foregroundStyle(NativeTheme.accent)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("צור כתבה מהמקורות").font(.headline)
-                                    Text("בחר צילומים וחבר טיוטה מקומית").font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.backward").font(.caption)
-                            }.padding(14).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                            featureLabel("צור כתבה מהמקורות", subtitle: "בחר צילומים וחבר טיוטה", icon: "doc.text")
+                        }.buttonStyle(.plain).accessibilityIdentifier("home.article")
+                        Button { tab = 4 } label: {
+                            featureLabel("הצעד הבא", subtitle: "משימות שאישרת ותזכורות", icon: "checklist")
+                        }.buttonStyle(.plain)
+                        Button { tab = 3 } label: {
+                            featureLabel("פתח את הנושאים שלך", subtitle: "מרחבים ופרויקטים", icon: "folder")
                         }.buttonStyle(.plain)
                         NavigationLink {
                             AIEnrichmentView()
                         } label: {
-                            Label("ניתוח תוכן מתקדם ב־AI (רשות)", systemImage: "sparkles")
-                                .font(.subheadline.weight(.semibold))
-                        }.buttonStyle(.bordered)
-                        Button { tab = 3 } label: {
-                            Label("פתח את הנושאים שלך", systemImage: "folder.fill")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }.buttonStyle(.borderedProminent)
+                            featureLabel("ניתוח תוכן מתקדם ב־AI (רשות)", subtitle: "דורש שרת ואישור שליחה", icon: "sparkles")
+                        }.buttonStyle(.plain)
                         if library.textAttentionCount > 0 {
                             Text("\(library.textAttentionCount) צילומים ללא טקסט או עם שגיאת זיהוי. אפשר לחזור אליהם לפי הצורך.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        if !library.pending.isEmpty {
-                            Button("סקירה ידנית (רשות)") { reviewIDs = nil; review = true }
-                                .font(.footnote).accessibilityLabel("לסקירה")
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
-                        .background(NativeTheme.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 22))
-                    Button { tab = 2 } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: "brain.head.profile").font(.title2)
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("המוח של הרעיונות").font(.headline)
-                                Text("פתח את מפת הנושאים והקשרים").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.backward")
-                        }.padding(18).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-                    }.buttonStyle(.plain).accessibilityLabel("המוח של הרעיונות")
-                    let actions = library.active.filter { $0.hasTask && $0.reviewedAt != nil && $0.taskCompletedAt == nil }
-                    if !actions.isEmpty {
-                        Button { tab = 4 } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: "checklist").font(.title2)
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text("\(actions.count) רעיונות מחכים לצעד הבא").font(.headline)
-                                    Text(actions.first?.taskTitle ?? "").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.backward")
-                            }.padding(18).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-                        }.buttonStyle(.plain)
                     }
                     HStack {
-                        Text("נשמרו לאחרונה").font(.title3.weight(.medium))
+                        Text("נשמרו לאחרונה").font(.title3.weight(.medium)).accessibilityAddTraits(.isHeader)
                         Spacer()
                         Button("לכל הספרייה") { tab = 1 }.font(.subheadline)
                     }
