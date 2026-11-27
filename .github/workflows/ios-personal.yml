@@ -28,6 +28,7 @@ on:
       - screenmind-v2-grounded-qa
       - screenmind-v2-qa-ui
       - screenmind-v2-attention-center
+      - screenmind-v2-local-reminders
 permissions:
   contents: read
 concurrency:
