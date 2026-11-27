@@ -342,6 +342,18 @@ struct ArticleStudioView: View {
                         Label("צור טיוטה מקומית", systemImage: "doc.text")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }.buttonStyle(.borderedProminent)
+                    if valid.count <= 8 {
+                        NavigationLink {
+                            GroundedArticleView(title: ArticleSelection.title(title),
+                                                captures: ArticleSelection.sources(from: library.active, ids: valid),
+                                                open: open)
+                        } label: {
+                            Label("כתיבת AI עם מקורות (ניסיוני)", systemImage: "sparkles")
+                        }
+                    } else {
+                        Text("כתיבת AI מוגבלת ל־8 מקורות. הטיוטה המקומית מאפשרת עד 40.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Button("נקה בחירה", role: .destructive) { selected.removeAll() }
                 }
             }
@@ -382,5 +394,280 @@ struct ArticleStudioView: View {
         .onChange(of: query) { _, _ in shown = ArticleSelection.pageSize }
         .onChange(of: onlySelected) { _, _ in shown = ArticleSelection.pageSize }
         .onChange(of: library.captures) { _, _ in selected = validIDs }
+    }
+}
+
+
+// Explicit, text-only article pilot. Nothing is sent or persisted automatically.
+struct GroundedArticleInput: Codable, Equatable, Sendable {
+    let id: String
+    var title: String
+    var text: String
+}
+struct GroundedArticleResult: Codable, Sendable {
+    struct Evidence: Codable, Sendable {
+        let id: String
+        let quote: String
+    }
+    struct Section: Codable, Sendable {
+        let heading: String
+        let paragraph: String
+        let evidence: [Evidence]
+    }
+    let title: String
+    let sections: [Section]
+
+    static func bounded(_ text: String, min: Int, max: Int) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count >= min &&
+        text.utf16.count <= max
+    }
+    static func clip(_ text: String, limit: Int) -> String {
+        var result = ""
+        var length = 0
+        for character in text {
+            let n = String(character).utf16.count
+            if length + n > limit { break }
+            result.append(character); length += n
+        }
+        return result
+    }
+    func valid(for sources: [GroundedArticleInput]) -> Bool {
+        guard Self.bounded(title, min: 1, max: 180),
+              (1...6).contains(sections.count),
+              Set(sources.map(\.id)).count == sources.count else { return false }
+        let texts = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, Data($0.text.utf8)) })
+        return sections.allSatisfy { section in
+            guard Self.bounded(section.heading, min: 1, max: 160),
+                  Self.bounded(section.paragraph, min: 1, max: 1200),
+                  (1...3).contains(section.evidence.count),
+                  Set(section.evidence.map(\.id)).count == section.evidence.count else { return false }
+            return section.evidence.allSatisfy { evidence in
+                Self.bounded(evidence.quote, min: 12, max: 240) &&
+                texts[evidence.id]?.range(of: Data(evidence.quote.utf8)) != nil
+            }
+        }
+    }
+}
+
+private final class ArticleNoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
+enum GroundedArticleClient {
+    private struct Request: Encodable {
+        let language: String
+        let title: String
+        let items: [GroundedArticleInput]
+    }
+    static let languages = ["he", "en", "ru", "es", "fr", "de", "ar", "it", "pt", "ja", "zh", "hi"]
+    static func endpoint(_ raw: String) -> URL? {
+        guard let c = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              c.scheme?.lowercased() == "https", let host = c.host, !host.isEmpty,
+              c.user == nil, c.password == nil, c.query == nil, c.fragment == nil,
+              c.path == "/article" else { return nil }
+        return c.url
+    }
+    static func valid(title: String, language: String, items: [GroundedArticleInput]) -> Bool {
+        guard languages.contains(language), GroundedArticleResult.bounded(title, min: 1, max: 120),
+              (1...8).contains(items.count), Set(items.map(\.id)).count == items.count else { return false }
+        return items.allSatisfy {
+            (0..<8).map { "s\($0)" }.contains($0.id) &&
+            GroundedArticleResult.bounded($0.title, min: 1, max: 240) &&
+            GroundedArticleResult.bounded($0.text, min: 12, max: 3500)
+        }
+    }
+    static func generate(url: URL, token: String, title: String, language: String,
+                         items: [GroundedArticleInput]) async throws -> GroundedArticleResult {
+        guard endpoint(url.absoluteString) == url, token.utf16.count >= 32,
+              token.rangeOfCharacter(from: .controlCharacters) == nil,
+              valid(title: title, language: language, items: items) else {
+            throw NativeError.message("פרטי החיבור או המקורות אינם תקינים.")
+        }
+        var request = URLRequest(url: url, timeoutInterval: 70)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(Request(language: language, title: title, items: items))
+        guard (request.httpBody?.count ?? Int.max) <= 128 * 1024 else {
+            throw NativeError.message("המידע גדול מדי.")
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.httpCookieStorage = nil
+        config.urlCredentialStorage = nil
+        let session = URLSession(configuration: config, delegate: ArticleNoRedirect(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              data.count <= 128 * 1024 else { throw NativeError.message("השרת לא החזיר כתבה תקינה.") }
+        let article = try JSONDecoder().decode(GroundedArticleResult.self, from: data)
+        guard article.valid(for: items) else {
+            throw NativeError.message("הציטוטים אינם תואמים למקורות שנשלחו.")
+        }
+        return article
+    }
+}
+
+struct GroundedArticleView: View {
+    @EnvironmentObject private var library: NativeLibrary
+    let open: (Capture) -> Void
+    private let origins: [String: Capture]
+    @State private var title: String
+    @State private var items: [GroundedArticleInput]
+    @State private var language = "he"
+    @State private var address = ""
+    @State private var token = ""
+    @State private var approved = false
+    @State private var running = false
+    @State private var result: GroundedArticleResult?
+    @State private var message = ""
+    @State private var work: Task<Void, Never>?
+    private let labels = ["עברית", "English", "Русский", "Español", "Français", "Deutsch", "العربية",
+                          "Italiano", "Português", "日本語", "中文", "हिन्दी"]
+
+    init(title: String, captures: [Capture], open: @escaping (Capture) -> Void) {
+        self.open = open
+        _title = State(initialValue: GroundedArticleResult.clip(title, limit: 120))
+        let mapped = captures.prefix(8).enumerated().map { (index, capture) in ("s\(index)", capture) }
+        origins = Dictionary(uniqueKeysWithValues: mapped)
+        _items = State(initialValue: mapped.map { id, capture in
+            GroundedArticleInput(id: id, title: GroundedArticleResult.clip(capture.displayTitle, limit: 240),
+                                text: GroundedArticleResult.clip(capture.text, limit: 3500))
+        })
+    }
+    private var current: Bool {
+        items.allSatisfy { item in
+            guard let origin = origins[item.id], let capture = library.capture(origin.id),
+                  !capture.isArchived else { return false }
+            return capture.text == origin.text && capture.displayTitle == origin.displayTitle
+        }
+    }
+    private var ready: Bool {
+        approved && !running && current && GroundedArticleClient.endpoint(address) != nil &&
+        token.utf16.count >= 32 && GroundedArticleClient.valid(title: title, language: language, items: items)
+    }
+    var body: some View {
+        List {
+            Section {
+                Text("כתבה עם ציטוטים").font(.title2.bold())
+                Text("ניסוי בכתיבה גנרטיבית מ־1 עד 8 מקורות. הטקסט שנבחר יעבור לשרת פרטי ולספק AI רק לאחר אישור ושליחה. לא נשלחים תמונות או מזהי ספרייה.")
+                Text("אין לשלוח סיסמאות, מידע צבאי, מסמכים אישיים או פרטי זיהוי. ייתכנו חיובים ושמירת מידע אצל הספק.")
+                    .foregroundStyle(.orange).font(.caption)
+            }
+            Section("חיבור ושפה") {
+                TextField("https://your-server.example/article", text: $address)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("אסימון גישה לשרת", text: $token)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("כותרת", text: $title)
+                Picker("שפת הכתבה", selection: $language) {
+                    ForEach(GroundedArticleClient.languages.indices, id: \.self) { index in
+                        Text(labels[index]).tag(GroundedArticleClient.languages[index])
+                    }
+                }
+            }.disabled(running)
+            Section("הטקסט המדויק שישלח — אפשר לערוך ולהסיר") {
+                Text("העריכה כאן אינה משנה את המקור. הטקסט ההתחלתי מוגבל ל־3,500 יחידות UTF-16 לכל מקור.")
+                    .font(.caption)
+                ForEach($items, id: \.id) { $item in
+                    DisclosureGroup(item.title) {
+                        TextField("כותרת מקור", text: $item.title)
+                        TextEditor(text: $item.text).frame(minHeight: 120)
+                        Text("\(item.text.utf16.count) / 3500").font(.caption)
+                        Button("הסר מקור", role: .destructive) {
+                            let id = item.id
+                            items.removeAll { $0.id == id }
+                        }
+                    }
+                }
+                Toggle("בדקתי את הכותרות והטקסט והסרתי מידע רגיש", isOn: $approved)
+                if !current { Text("מקור השתנה או הוסר. חזור למסך הבחירה והכן סבב חדש.").foregroundStyle(.orange) }
+            }.disabled(running)
+            Section {
+                Button("שלח \(items.count) מקורות וכתוב טיוטה") { start() }
+                    .disabled(!ready)
+                if running {
+                    ProgressView("מכין כתבה…")
+                    Button("בטל המתנה") {
+                        work?.cancel(); work = nil; running = false
+                        approved = false
+                        message = "ההמתנה בוטלה. ייתכן שהשרת כבר עיבד את הבקשה."
+                    }
+                }
+                if !message.isEmpty { Text(message).font(.caption) }
+            }
+            if let result, current {
+                Section("טיוטה לבדיקה — לא נשמרה") {
+                    Text(result.title).font(.title.bold()).textSelection(.enabled)
+                    Text("הציטוטים נבדקו מול הטקסט שנשלח. אין בכך אימות שהטענות נכונות או נתמכות במלואן.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(result.sections.indices, id: \.self) { index in
+                        let section = result.sections[index]
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(section.heading).font(.headline)
+                            Text(section.paragraph).textSelection(.enabled)
+                            ForEach(section.evidence, id: \.id) { evidence in
+                                Text(evidence.quote).font(.caption).textSelection(.enabled)
+                                if let origin = origins[evidence.id], let capture = library.capture(origin.id) {
+                                    Button { open(capture) } label: {
+                                        Label("פתח מקור: " + capture.displayTitle, systemImage: "link")
+                                    }.buttonStyle(.borderless)
+                                }
+                            }
+                        }
+                    }
+                    ShareLink(item: plainText(result)) {
+                        Label("שתף טיוטת טקסט", systemImage: "square.and.arrow.up")
+                    }
+                    Text("שיתוף עשוי לחשוף מידע אישי. הטיוטה אינה גיבוי ואינה נשמרת אוטומטית.")
+                        .font(.caption)
+                }
+            }
+        }
+        .navigationTitle("סטודיו AI")
+        .onChange(of: items) { _, _ in resetApproval() }
+        .onChange(of: title) { _, _ in resetApproval() }
+        .onChange(of: language) { _, _ in resetApproval() }
+        .onChange(of: address) { _, _ in resetApproval() }
+        .onChange(of: token) { _, _ in resetApproval() }
+        .onDisappear {
+            work?.cancel(); work = nil; running = false; token = ""; approved = false
+        }
+    }
+    private func resetApproval() {
+        approved = false; result = nil
+    }
+    private func start() {
+        guard ready, let url = GroundedArticleClient.endpoint(address) else { return }
+        let input = items, heading = title, lang = language, access = token
+        running = true; result = nil; approved = false; message = ""
+        work = Task {
+            do {
+                let draft = try await GroundedArticleClient.generate(url: url, token: access,
+                    title: heading, language: lang, items: input)
+                guard !Task.isCancelled else { return }
+                if current && items == input { result = draft }
+                else { message = "המקורות השתנו. הטיוטה נדחתה." }
+            } catch {
+                guard !Task.isCancelled else { return }
+                message = "לא התקבלה כתבה תקינה. בדוק חיבור, מגבלות שימוש והפעלת השרת. דבר לא נשמר."
+            }
+            running = false
+        }
+    }
+    private func plainText(_ draft: GroundedArticleResult) -> String {
+        var output = "טיוטת AI לבדיקה — ScreenMind\n\n" + draft.title
+        for section in draft.sections {
+            output += "\n\n" + section.heading + "\n" + section.paragraph
+            for evidence in section.evidence {
+                let label = items.first { $0.id == evidence.id }?.title ?? evidence.id
+                output += "\nמקור: " + label + "\n" + evidence.quote
+            }
+        }
+        return output
     }
 }
