@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 struct NativeHome: View {
     @EnvironmentObject private var library: NativeLibrary
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab = 0
     @State private var picker: [PhotosPickerItem] = []
     @State private var selected: Capture?
@@ -32,6 +33,18 @@ struct NativeHome: View {
             tabPage {
                 NativeActionsView(open: { selected = $0 }).toolbar { toolbar }
             }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(4)
+        }
+        .privacySensitive()
+        .overlay {
+            if scenePhase != .active {
+                ZStack {
+                    Color(uiColor: .systemBackground).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.shield").font(.largeTitle)
+                        Text("ScreenMind").font(.headline)
+                    }.foregroundStyle(.secondary)
+                }.accessibilityHidden(true)
+            }
         }
         .onChange(of: picker) { _, items in
             guard !items.isEmpty else { return }
