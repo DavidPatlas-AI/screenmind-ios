@@ -30,6 +30,7 @@ on:
       - screenmind-v2-attention-center
       - screenmind-v2-local-reminders
       - screenmind-v2-project-bridges
+      - screenmind-v2-scale-validation
 permissions:
   contents: read
 concurrency:
