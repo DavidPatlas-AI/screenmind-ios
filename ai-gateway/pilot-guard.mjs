@@ -21,6 +21,11 @@ function readState(file) {
       state.used<0 || state.used>state.limit || Object.keys(state).length!==3) throw Error("invalid_ledger");
   return state;
 }
+// Read-only status; no reservation, reset, or credential disclosure.
+export function readPilotUsage(file) {
+  const {limit,used}=readState(absoluteFile(file));
+  return {limit,used,remaining:limit-used};
+}
 function syncDirectory(file) {
   const fd=fs.openSync(path.dirname(file),"r");
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
