@@ -98,6 +98,21 @@ struct NativeCollectionsView: View {
                     Text("הצילומים כבר מסודרים לנושאים. אפשר לפתוח כל נושא ולגלות מה נשמר.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
+                if projects.count >= 2 {
+                    NavigationLink {
+                        ProjectBridgesView(open: open)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "link").font(.title2).foregroundStyle(NativeTheme.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("גשרים בין פרויקטים").font(.headline).foregroundStyle(.primary)
+                                Text("גלה מונחים משותפים ומקורות קשורים").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
+                        }.padding(14).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+                    }.buttonStyle(.plain)
+                }
                 if !projects.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("פרויקטים שהתגלו", systemImage: "folder.badge.gearshape")
