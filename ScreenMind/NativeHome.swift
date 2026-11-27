@@ -225,6 +225,20 @@ struct NativeHome: View {
                 }.padding(.top, 12)
                 if !library.captures.isEmpty {
                     homeSearch
+                    NavigationLink {
+                        MemoryChatView(open: { selected = $0 })
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "bubble.left.and.bubble.right").font(.title2)
+                                .foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("שיחה עם הזיכרון").font(.headline).foregroundStyle(.primary)
+                                Text("שאל שאלות וקבל קטעים מהמקורות").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
+                        }.padding(16).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                    }.buttonStyle(.plain)
                     libraryOverview
                 }
                 albumCard
