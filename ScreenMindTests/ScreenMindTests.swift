@@ -969,6 +969,36 @@ import UIKit
         XCTAssertFalse(results.contains { $0.kind == .due && $0.sourceID == "completed" })
     }
 
+    func testReminderPolicyOnlyAllowsApprovedOpenTasks() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var task = idea("task", title: "מקור", text: "בדיקה", at: now)
+        task.intent = .act
+        task.taskTitle = "בדוק"
+        task.reviewedAt = now
+        XCTAssertTrue(ReminderPolicy.eligible(task))
+        var completed = task
+        completed.taskCompletedAt = now
+        XCTAssertFalse(ReminderPolicy.eligible(completed))
+        var archived = task
+        archived.isArchived = true
+        XCTAssertFalse(ReminderPolicy.eligible(archived))
+        var unreviewed = task
+        unreviewed.reviewedAt = nil
+        XCTAssertFalse(ReminderPolicy.eligible(unreviewed))
+        XCTAssertFalse(ReminderPolicy.eligible(idea("other", title: "מקור", text: "בדיקה", at: now)))
+        XCTAssertEqual(ReminderPolicy.obsolete([ReminderPolicy.identifier("task"), ReminderPolicy.identifier("missing"), "other.notification"], captures: [task]), [ReminderPolicy.identifier("missing")])
+        XCTAssertEqual(ReminderPolicy.obsolete([ReminderPolicy.identifier("task")], captures: [completed]), [ReminderPolicy.identifier("task")])
+    }
+
+    func testReminderPolicyBoundsFutureDates() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertFalse(ReminderPolicy.validDate(now, now: now))
+        XCTAssertFalse(ReminderPolicy.validDate(now.addingTimeInterval(59), now: now))
+        XCTAssertTrue(ReminderPolicy.validDate(now.addingTimeInterval(60), now: now))
+        XCTAssertTrue(ReminderPolicy.validDate(now.addingTimeInterval(86400), now: now))
+        XCTAssertFalse(ReminderPolicy.validDate(now.addingTimeInterval(366*86400), now: now))
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
