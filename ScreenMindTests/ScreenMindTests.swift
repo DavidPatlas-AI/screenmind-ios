@@ -841,6 +841,36 @@ import UIKit
         XCTAssertTrue(visible.allSatisfy { graph.node($0) != nil })
     }
 
+    func testArticleSelectionUsesOnlyChosenActiveSources() {
+        let date = Date(timeIntervalSince1970: 1234)
+        let first = idea("a", title: "מדריך", text: "SwiftUI <script>test</script>", collection: "פיתוח", at: date)
+        var archived = idea("b", title: "ישן", text: "טקסט", at: date)
+        archived.isArchived = true
+        let other = idea("c", title: "מקור אחר", text: "לא נבחר", at: date)
+        let items = ArticleSelection.sources(from: [first, archived, other, first], ids: ["a", "b", "missing"])
+        XCTAssertEqual(items.map(\.id), ["a"])
+        let draft = StoryDraft.build(title: ArticleSelection.title("  בדיקה  "), captures: items)
+        XCTAssertEqual(draft.title, "בדיקה")
+        XCTAssertEqual(draft.entries.count, 1)
+        XCTAssertTrue(draft.html().contains("&lt;script&gt;"))
+        XCTAssertFalse(draft.html().contains("לא נבחר"))
+        XCTAssertTrue(ArticleSelection.matches(first, query: "swiftui"))
+        XCTAssertTrue(ArticleSelection.matches(first, query: "פיתוח"))
+        XCTAssertFalse(ArticleSelection.matches(first, query: "unrelated"))
+        XCTAssertEqual(ArticleSelection.title("  "), "כתבה מהמקורות")
+    }
+
+    func testArticleSelectionHasDeterministicLimit() {
+        let items = (0..<50).map { i in
+            idea("id-\(i)", title: "מקור", text: "test", at: Date(timeIntervalSince1970: Double(i)))
+        }
+        let selected = ArticleSelection.sources(from: items, ids: Set(items.map(\.id)))
+        XCTAssertEqual(selected.count, 40)
+        XCTAssertEqual(selected.first?.id, "id-49")
+        XCTAssertEqual(selected.last?.id, "id-10")
+        XCTAssertEqual(ArticleSelection.title(String(repeating: "א", count: 200)).count, 120)
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
