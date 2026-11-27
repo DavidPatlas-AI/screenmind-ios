@@ -370,6 +370,18 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testLocalConceptSearchSupportsHebrewSynonymsAndRussian() {
+        let now = Date()
+        let bug = idea("bug", title: "באג", text: "SwiftUI", at: now)
+        let expense = idea("expense", title: "расходы", text: "2026", at: now)
+        let purchase = idea("purchase", title: "קנייה", text: "ציוד", at: now)
+        let index = MemoryLexicalIndex(captures: [expense, purchase, bug])
+        XCTAssertEqual(index.search("תקלה").first?.id, "bug")
+        XCTAssertEqual(index.search("תקלה").first?.match, .related)
+        XCTAssertEqual(index.search("הוצאות").first?.id, "expense")
+        XCTAssertEqual(index.search("רכישה").first?.id, "purchase")
+        XCTAssertTrue(index.search("הצפנה").isEmpty)
+    }
     func testMemorySearchRanksRelevantWordsAndRejectsUnrelatedSources() {
         let now = Date()
         let capture = idea("code", title: "מדריך GitHub", text: "SwiftUI פיתוח אפליקציה", at: now)
