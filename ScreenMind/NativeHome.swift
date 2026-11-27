@@ -171,6 +171,51 @@ struct NativeHome: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 22))
     }
+    private var libraryOverview: some View {
+        let openTasks = library.active.filter { $0.hasTask && $0.reviewedAt != nil && $0.taskCompletedAt == nil }.count
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("הספרייה שלי").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+            Text(library.captures.count, format: .number)
+                .font(.system(.largeTitle, design: .rounded).bold())
+                .monospacedDigit()
+                .accessibilityLabel("\(library.captures.count) מקורות בארכיון")
+            Text("מקורות בארכיון").font(.subheadline).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    Text("\(library.collections.count) נושאים")
+                    Text("·").accessibilityHidden(true)
+                    Text("\(openTasks) משימות פתוחות")
+                }.fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(library.collections.count) נושאים")
+                    Text("\(openTasks) משימות פתוחות")
+                }
+            }.font(.subheadline.weight(.medium)).foregroundStyle(NativeTheme.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .combine)
+    }
+    private var homeSearch: some View {
+        NavigationLink {
+            MemorySearchView(open: { selected = $0 })
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass").foregroundStyle(NativeTheme.accent)
+                    .accessibilityHidden(true)
+                Text("מה אני רוצה למצוא?").font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.backward").font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+        }.buttonStyle(.plain)
+    }
     private var home: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -178,6 +223,10 @@ struct NativeHome: View {
                     Text("הידע שלך, במקום אחד").font(.largeTitle.weight(.semibold))
                     Text("הצילומים מתארגנים לנושאים. אין צורך למיין אחד־אחד.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
+                if !library.captures.isEmpty {
+                    homeSearch
+                    libraryOverview
+                }
                 albumCard
                 if library.captures.isEmpty {
                     ContentUnavailableView {
@@ -190,17 +239,6 @@ struct NativeHome: View {
                         Label("הידע שלך", systemImage: "sparkles").font(.title2.bold())
                         Text("\(library.recognizedCount) צילומים עם טקסט · \(library.collections.count) נושאים")
                             .font(.subheadline).foregroundStyle(.secondary)
-                        NavigationLink {
-                            MemorySearchView(open: { selected = $0 })
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "magnifyingglass").font(.title3)
-                                Text("מה אני רוצה למצוא?").font(.headline)
-                                Spacer()
-                                Image(systemName: "sparkles")
-                            }.padding(12).frame(maxWidth: .infinity)
-                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
-                        }.buttonStyle(.plain)
                         NavigationLink {
                             MemoryDiscoveryView(open: { selected = $0 })
                         } label: {
