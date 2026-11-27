@@ -633,6 +633,7 @@ struct GroundedArticleView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
     private let origins: [String: Capture]
+    private var notebookOnly: Bool { origins.isEmpty }
     @AppStorage("screenmind.memoryNotebook.v1") private var notebookData = Data()
     @State private var title: String
     @State private var items: [GroundedArticleInput]
@@ -670,6 +671,7 @@ struct GroundedArticleView: View {
     }
     var body: some View {
         List {
+            if !notebookOnly {
             Section {
                 Text("כתבה עם ציטוטים").font(.title2.bold())
                 Text("ניסוי בכתיבה גנרטיבית מ־1 עד 8 מקורות. הטקסט שנבחר יעבור לשרת פרטי ולספק AI רק לאחר אישור ושליחה. לא נשלחים תמונות או מזהי ספרייה.")
@@ -717,6 +719,10 @@ struct GroundedArticleView: View {
                     }
                 }
                 if !message.isEmpty { Text(message).font(.caption) }
+            }
+            }
+            if notebookOnly && notebook.isEmpty {
+                ContentUnavailableView("המחברת עדיין ריקה", systemImage: "book.closed", description: Text("אפשר ליצור טיוטה מתוך החיפוש החכם ולשמור אותה כאן."))
             }
             if !notebook.isEmpty {
                 Section("תובנות מהזיכרון") {
@@ -827,7 +833,7 @@ struct GroundedArticleView: View {
                 }
             }
             if let result, current {
-                Section("טיוטה לבדיקה — לא נשמרה") {
+                Section("טיוטה לבדיקה") {
                     Text(result.title).font(.title.bold()).textSelection(.enabled)
                     Text("הציטוטים נבדקו מול הטקסט שנשלח. אין בכך אימות שהטענות נכונות או נתמכות במלואן.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -863,12 +869,12 @@ struct GroundedArticleView: View {
                     ShareLink(item: plainText(result)) {
                         Label("שתף טיוטת טקסט", systemImage: "square.and.arrow.up")
                     }
-                    Text("שיתוף עשוי לחשוף מידע אישי. הטיוטה אינה גיבוי ואינה נשמרת אוטומטית.")
+                    Text("שיתוף עשוי לחשוף מידע אישי. הטיוטה אינה נשמרת אוטומטית; אפשר לשמור אותה במחברת באופן מפורש.")
                         .font(.caption)
                 }
             }
         }
-        .navigationTitle("סטודיו AI")
+        .navigationTitle(notebookOnly ? "מחברת הזיכרון" : "סטודיו AI")
         .onChange(of: items) { _, _ in resetApproval() }
         .onChange(of: title) { _, _ in resetApproval() }
         .onChange(of: language) { _, _ in resetApproval() }
