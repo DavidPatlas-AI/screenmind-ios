@@ -20,6 +20,7 @@ on:
       - screenmind-v2-library-backup
       - screenmind-v2-encrypted-backup
       - screenmind-v2-home-polish
+      - screenmind-v2-spatial-brain
 permissions:
   contents: read
 concurrency:
