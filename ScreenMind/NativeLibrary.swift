@@ -87,7 +87,10 @@ struct ImportReport: Identifiable, Sendable {
     }
     func refresh() {
         guard let vault else { return }
-        do { captures = try vault.all() }
+        do {
+            captures = try vault.all()
+            Task { await LocalReminders.reconcile(library: self) }
+        }
         catch { self.error = error.localizedDescription }
     }
     func noteActivity(_ message: String) {
@@ -104,6 +107,7 @@ struct ImportReport: Identifiable, Sendable {
     }
     func forgetCapture(_ id: String) {
         captures.removeAll { $0.id == id }
+        LocalReminders.cancel(id: id)
     }
     @discardableResult func update(_ id: String, change: (inout Capture) -> Void) -> Bool {
         guard let vault else { return false }
