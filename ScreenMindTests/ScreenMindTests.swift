@@ -370,6 +370,18 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testHebrewTypoSearchPreservesExactPriorityAndIgnoresNumbers() {
+        let now = Date()
+        let exact = idea("exact", title: "חשבונית", text: "123456", at: now)
+        let typo = idea("typo", title: "חשבוית", text: "ציוד", at: now)
+        let index = MemoryLexicalIndex(captures: [typo, exact])
+        XCTAssertEqual(index.search("חשבונית").first?.id, "exact")
+        XCTAssertTrue(index.search("חשבונית").contains { $0.id == "typo" })
+        XCTAssertEqual(index.search("חשבוית").first?.id, "typo")
+        XCTAssertTrue(index.search("חשבוניח").contains { $0.id == "exact" })
+        XCTAssertTrue(index.search("123457").isEmpty)
+        XCTAssertTrue(index.search("כלב").isEmpty)
+    }
     func testHebrewPhraseRankingAndPluralConcepts() {
         let now = Date()
         let phrase = idea("z-phrase", title: "ניהול משימות", text: "כלי עבודה", at: now)
