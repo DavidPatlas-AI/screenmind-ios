@@ -10,6 +10,8 @@ struct MemoryLexicalIndex: Sendable {
     }
     private let documents: [Document]
     private let frequencies: [String: Int]
+    // Postings only include source-backed terms; category-only matches cannot qualify.
+    private let sourcePostings: [String: [Int]]
     private static let stopWords: Set<String> = [
         "את","של","על","עם","מה","איך","איפה","מתי","לי","אני","כל","מצא","תמצא","צילמתי","שמרתי","האם","רוצה","למצוא","תראה","שהיה",
         "the","a","an","to","of","in","my","me","what","where","find","show","saved","about","did","i","is","was","please","can","you",
@@ -66,6 +68,7 @@ struct MemoryLexicalIndex: Sendable {
     init(captures: [Capture]) {
         var docs: [Document] = []
         var counts: [String: Int] = [:]
+        var postings: [String: [Int]] = [:]
         for capture in captures where !capture.isArchived {
             var weights: [String: Double] = [:]
             // The actual OCR and title are more reliable than a category name.
@@ -78,13 +81,33 @@ struct MemoryLexicalIndex: Sendable {
             for (word, weight) in weights {
                 for key in Self.keys(word) { related[key] = max(related[key] ?? 0, weight) }
             }
-            for key in related.keys { counts[key, default: 0] += 1 }
+            for (key, weight) in related {
+                counts[key, default: 0] += 1
+                if weight >= 2 { postings[key, default: []].append(docs.count) }
+            }
             docs.append(Document(id: capture.id, weights: weights, related: related))
         }
         documents = docs
         frequencies = counts
+        sourcePostings = postings
     }
-    func search(_ query: String, limit: Int = 60) -> [MemorySearchHit] {
+    // Exposed internally for regression tests comparing with the former full scan.
+    func candidateCount(_ query: String) -> Int {
+        candidates(Self.terms(String(query.prefix(500)))).count
+    }
+
+    private func candidates(_ terms: [String]) -> Set<Int> {
+        var result = Set<Int>()
+        for term in terms {
+            if Task.isCancelled { return [] }
+            for key in Self.keys(term) {
+                if let indices = sourcePostings[key] { result.formUnion(indices) }
+            }
+        }
+        return result
+    }
+
+    func search(_ query: String, limit: Int = 60, exhaustive: Bool = false) -> [MemorySearchHit] {
         let queryTerms = Self.terms(String(query.prefix(500)))
         guard !queryTerms.isEmpty, limit > 0 else { return [] }
         let queries = queryTerms.map { term -> (String, Set<String>, Double) in
@@ -94,8 +117,12 @@ struct MemoryLexicalIndex: Sendable {
             return (term, keys, rarity)
         }
         var results: [MemorySearchHit] = []
-        for doc in documents {
+        // Existing scoring requires at least one source-backed match, so no
+        // qualifying result is excluded by this candidate selection.
+        let positions = exhaustive ? Array(documents.indices) : candidates(queryTerms).sorted()
+        for position in positions {
             if Task.isCancelled { break }
+            let doc = documents[position]
             var matched = 0, direct = 0, sourceMatches = 0
             var score = 0.0
             for (term, keys, rarity) in queries {
