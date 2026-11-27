@@ -804,6 +804,43 @@ import UIKit
         XCTAssertTrue(try empty.all().isEmpty)
     }
 
+    func testSpatialBrainProjectionIsBoundedAndDeterministic() {
+        let ids = (0..<40).map { "node-\($0)" }
+        let initial = SpatialBrainLayout.project(ids: ids, yaw: 0, pitch: 0, zoom: 1)
+        XCTAssertEqual(initial.count, SpatialBrainLayout.limit)
+        XCTAssertEqual(initial, SpatialBrainLayout.project(ids: ids, yaw: 0, pitch: 0, zoom: 1))
+        XCTAssertEqual(Set(initial.map(\.id)).count, initial.count)
+        XCTAssertEqual(initial.map(\.depth), initial.map(\.depth).sorted())
+        let rotated = SpatialBrainLayout.project(ids: ids, yaw: 1.2, pitch: 0.5, zoom: 1.25)
+        XCTAssertNotEqual(initial, rotated)
+        XCTAssertEqual(Set(initial.map(\.id)), Set(rotated.map(\.id)))
+        for point in rotated {
+            XCTAssertTrue(point.x.isFinite && point.y.isFinite && point.scale.isFinite)
+            XCTAssertLessThanOrEqual(abs(point.x), 2.0)
+            XCTAssertLessThanOrEqual(abs(point.y), 2.0)
+            XCTAssertGreaterThan(point.scale, 0)
+        }
+        XCTAssertTrue(SpatialBrainLayout.project(ids: [], yaw: 0, pitch: 0, zoom: 1).isEmpty)
+        XCTAssertEqual(SpatialBrainLayout.project(ids: ["center"], yaw: 1, pitch: 1, zoom: 1).count, 1)
+    }
+
+    func testSpatialBrainUsesExistingGraphAndDoesNotIncludeArchivedCaptures() {
+        let date = Date(timeIntervalSince1970: 1234)
+        var items = (0..<25).map { i in
+            idea("id-\(i)", title: "מקור \(i)", text: "מדריך פיתוח", collection: "פרויקט", at: date)
+        }
+        items[0].isArchived = true
+        let graph = BrainGraph.build(from: items)
+        let root = SpatialBrainLayout.visibleIDs(graph: graph, focusID: BrainGraph.rootID)
+        XCTAssertEqual(root.first, BrainGraph.rootID)
+        guard let topic = root.dropFirst().first else { return XCTFail("Missing topic") }
+        let visible = SpatialBrainLayout.visibleIDs(graph: graph, focusID: topic)
+        XCTAssertEqual(visible.first, topic)
+        XCTAssertEqual(visible.count, SpatialBrainLayout.limit)
+        XCTAssertFalse(visible.contains("item:id-0"))
+        XCTAssertTrue(visible.allSatisfy { graph.node($0) != nil })
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
