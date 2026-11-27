@@ -27,6 +27,7 @@ on:
       - screenmind-v2-memory-chat
       - screenmind-v2-grounded-qa
       - screenmind-v2-qa-ui
+      - screenmind-v2-attention-center
 permissions:
   contents: read
 concurrency:
