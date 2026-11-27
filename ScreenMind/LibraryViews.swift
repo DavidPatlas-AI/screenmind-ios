@@ -225,13 +225,13 @@ struct NativeSettingsView: View {
                     if let url = URL(string: UIApplication.openSettingsURLString) { Link("פתח הגדרות הרשאה", destination: url) }
                 }
                 Section("לפני שמפנים") {
-                    NavigationLink { BackupInspectionView() } label: { Label("בדיקת קובץ גיבוי", systemImage: "checkmark.shield") }
+                    NavigationLink { BackupInspectionView() } label: { Label("גיבוי ושחזור ספרייה", systemImage: "checkmark.shield") }
                     Text("הארכיון המקומי עלול להימחק בהסרת האפליקציה. ייצא עותק נוסף ל־Files, ובדוק שאתה יכול לפתוח את המקורות.")
                     Text("מחיקה מתמונות עשויה להסתנכרן לכל המכשירים עם iCloud Photos. היא אינה מבטיחה פינוי נפח מיידי.")
                         .foregroundStyle(.secondary)
                 }
                 Section("מה עדיין לא מחובר") {
-                    Text("גרסת האייפון עצמאית. אין סנכרון עם גרסת המחשב, ניתוח Gemini, זיהוי סתירות או סוכן שמבצע פעולות בשירותים אחרים.")
+                    Text("גרסת האייפון עצמאית. אין סנכרון עם גרסת המחשב או סוכן שמבצע פעולות בשירותים אחרים. כתיבה ותשובות AI דורשות שרת פרטי פעיל ואישור מפורש; הצגת ציטוטים אינה אימות עובדות.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section { Text("\(library.captures.count) מקורות בארכיון המקומי").foregroundStyle(.secondary) }
