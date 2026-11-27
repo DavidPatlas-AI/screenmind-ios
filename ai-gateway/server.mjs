@@ -3,12 +3,15 @@ import { timingSafeEqual } from "node:crypto";
 import { createBedrockProvider } from "./bedrock.mjs";
 import { createGeminiProvider } from "./gemini.mjs";
 import { createPilotGuard } from "./pilot-guard.mjs";
+import { createTenantAuth } from "./tenant-auth.mjs";
 import { articleSchema, articleInstructions, validateArticleInput, validateArticleOutput } from "./article.mjs";
 import { answerSchema, answerInstructions, validateAnswerInput, validateAnswerOutput } from "./answer.mjs";
 
 const { OPENAI_API_KEY, SCREENMIND_GATEWAY_TOKEN, OPENAI_MODEL = "gpt-4o-mini" } = process.env;
 const providerName=process.env.SCREENMIND_PROVIDER || "disabled";
-if (!SCREENMIND_GATEWAY_TOKEN || SCREENMIND_GATEWAY_TOKEN.length < 32) {
+const tenantFile=process.env.SCREENMIND_TENANT_MANIFEST;
+if (tenantFile && SCREENMIND_GATEWAY_TOKEN) throw Error("Choose either tenant manifest or single pilot token, not both.");
+if (!tenantFile && (!SCREENMIND_GATEWAY_TOKEN || SCREENMIND_GATEWAY_TOKEN.length < 32)) {
   throw new Error("Set a random SCREENMIND_GATEWAY_TOKEN (at least 32 characters).");
 }
 if (!["openai","bedrock","gemini","disabled"].includes(providerName)) throw new Error("Unknown provider.");
@@ -18,7 +21,8 @@ if (providerName==="openai" && (!OPENAI_API_KEY || process.env.SCREENMIND_ALLOW_
 const pilotGuard=providerName==="disabled" ? null : createPilotGuard(process.env.SCREENMIND_PILOT_LEDGER);
 const bedrock=providerName==="bedrock" ? await createBedrockProvider() : null;
 const gemini=providerName==="gemini" ? createGeminiProvider() : null;
-const token = Buffer.from("Bearer " + SCREENMIND_GATEWAY_TOKEN);
+const tenantAuth=tenantFile ? createTenantAuth(tenantFile, process.env.SCREENMIND_PILOT_LEDGER) : null;
+const token=tenantAuth ? null : Buffer.from("Bearer " + SCREENMIND_GATEWAY_TOKEN);
 const topics = ["technology","learning","finance","shopping","work","media","travel","food","documents","unknown"];
 const languages = ["he","en","ru","es","fr","de","ar","it","pt","ja","zh","hi"];
 const schema = {
@@ -62,7 +66,8 @@ const server = http.createServer(async (req,res) => {
   const article=req.url==="/article";
   const answer=req.url==="/answer";
   if (article && process.env.SCREENMIND_ENABLE_ARTICLES!=="yes") return send(res,503,{error:"article_disabled"});
-  if (!allowed(req)) return send(res,401,{error:"unauthorized"});
+  const tenant=tenantAuth ? tenantAuth.authenticate(req.headers.authorization) : null;
+  if (tenantAuth ? !tenant : !allowed(req)) return send(res,401,{error:"unauthorized"});
   if (answer && process.env.SCREENMIND_ENABLE_ANSWERS!=="yes") return send(res,503,{error:"answer_disabled"});
   if (providerName==="disabled") return send(res,503,{error:"provider_disabled"});
   if (inFlight) return send(res,429,{error:"busy"});
@@ -83,6 +88,8 @@ const server = http.createServer(async (req,res) => {
     // Forward only the fields explicitly previewed by the app.
     body={language:body.language,...(article?{title:body.title}:{}),...(answer?{question:body.question}:{}),items:body.items.map(({id,title,text})=>({id,title,text}))};
     try {
+      // Fail closed: a reservation can be consumed without a provider call if the other limit fails.
+      if (tenant && !tenant.reserve()) return send(res,429,{error:"tenant_limit"});
       if (!pilotGuard.reserve()) return send(res,429,{error:"pilot_limit"});
     } catch { return send(res,503,{error:"pilot_ledger_unavailable"}); }
     requests.push(Date.now());
@@ -95,7 +102,7 @@ const server = http.createServer(async (req,res) => {
       result=await gemini({body,schema:outputSchema,instructions,signal:AbortSignal.timeout(55000)});
     } else {
       const response = await fetch("https://api.openai.com/v1/responses",{
-        method:"POST", headers:{"authorization":"Bearer "+OPENAI_API_KEY,"content-type":"application/json"},
+        method:"POST", redirect:"error", headers:{"authorization":"Bearer "+OPENAI_API_KEY,"content-type":"application/json"},
         signal:AbortSignal.timeout(55000),
         body:JSON.stringify({model:OPENAI_MODEL,store:false,max_output_tokens:4000,
           instructions,
