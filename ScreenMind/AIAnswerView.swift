@@ -16,7 +16,7 @@ struct AnswerDraft: Decodable, Sendable {
         guard ["answered", "conflicting"].contains(status),
               !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               answer.utf16.count <= 1800,
-              (status == "conflicting" ? 2 : 1)...4 ~= evidence.count else { return false }
+              ((status == "conflicting" ? 2 : 1)...4).contains(evidence.count) else { return false }
         let sources = Dictionary(request.items.map { ($0.id, $0.text) }, uniquingKeysWith: { first, _ in first })
         var seen = Set<String>()
         return evidence.allSatisfy { e in
