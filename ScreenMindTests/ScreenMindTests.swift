@@ -871,6 +871,38 @@ import UIKit
         XCTAssertEqual(ArticleSelection.title(String(repeating: "א", count: 200)).count, 120)
     }
 
+    func testGroundedArticleChecksExactEvidenceAndSourceIdentity() {
+        let source = GroundedArticleInput(id: "s0", title: "מקור", text: "זהו משפט מקורי מתוך צילום המסך.")
+        func article(_ id: String, _ quote: String) -> GroundedArticleResult {
+            GroundedArticleResult(title: "טיוטה", sections: [
+                .init(heading: "כותרת", paragraph: "תיאור לבדיקה",
+                      evidence: [.init(id: id, quote: quote)])
+            ])
+        }
+        XCTAssertTrue(article("s0", "זהו משפט מקורי").valid(for: [source]))
+        XCTAssertFalse(article("s1", "זהו משפט מקורי").valid(for: [source]))
+        XCTAssertFalse(article("s0", "זהו משפט מומצא").valid(for: [source]))
+        XCTAssertFalse(article("s0", "מקורי").valid(for: [source]))
+        XCTAssertFalse(article("s0", "זהו משפט מקורי").valid(for: [source, source]))
+    }
+
+    func testGroundedArticleRequestBoundsAndHTTPS() {
+        let source = GroundedArticleInput(id: "s0", title: "מקור", text: "זהו משפט מקורי מתוך צילום המסך.")
+        XCTAssertTrue(GroundedArticleClient.valid(title: "כתבה", language: "he", items: [source]))
+        XCTAssertFalse(GroundedArticleClient.valid(title: "כתבה", language: "xx", items: [source]))
+        XCTAssertFalse(GroundedArticleClient.valid(title: "כתבה", language: "he", items: [source, source]))
+        XCTAssertFalse(GroundedArticleClient.valid(title: "כתבה", language: "he", items: []))
+        XCTAssertFalse(GroundedArticleClient.valid(title: "כתבה", language: "he", items: [
+            .init(id: "s0", title: "מקור", text: String(repeating: "א", count: 3501))
+        ]))
+        XCTAssertNotNil(GroundedArticleClient.endpoint("https://example.org/article"))
+        XCTAssertNil(GroundedArticleClient.endpoint("http://example.org/article"))
+        XCTAssertNil(GroundedArticleClient.endpoint("https://example.org/analyze"))
+        XCTAssertNil(GroundedArticleClient.endpoint("https://user@example.org/article"))
+        XCTAssertNil(GroundedArticleClient.endpoint("https://example.org/article?token=secret"))
+        XCTAssertEqual(GroundedArticleResult.clip("א😀ב", limit: 3), "א😀")
+    }
+
     private func idea(_ id: String, title: String, text: String, collection: String = "כללי", intent: SaveIntent = .remember, task: String? = nil, due: Date? = nil, reviewed: Date? = Date(timeIntervalSince1970: 1_700_000_000), at: Date) -> Capture {
         var capture = Capture(id: id, originalName: "\(id).png", createdAt: at, title: title, text: text, source: "test")
         capture.collection = collection
