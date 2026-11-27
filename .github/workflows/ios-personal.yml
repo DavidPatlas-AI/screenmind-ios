@@ -31,6 +31,7 @@ on:
       - screenmind-v2-local-reminders
       - screenmind-v2-project-bridges
       - screenmind-v2-scale-validation
+      - screenmind-v2-search-performance
 permissions:
   contents: read
 concurrency:
