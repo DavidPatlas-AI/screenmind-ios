@@ -249,7 +249,7 @@ actor MemorySearchEngine {
         let key = language.rawValue + "\u{001F}" + text
         if let cached = vectors[key] { return cached }
         guard let value = model.vector(for: text), !value.isEmpty else { return nil }
-        if vectors.count >= 500 { vectors.removeAll(keepingCapacity: true) }
+        if vectors.count >= 4096 { vectors.removeAll(keepingCapacity: true) }
         vectors[key] = value
         return value
     }
@@ -277,9 +277,9 @@ actor MemorySearchEngine {
                     let recent = active.sorted {
                         $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate > $1.sourceDate
                     }
-                    // Bounded on-device work for older iPhones. No claim of a full
-                    // semantic index; exact/partial matching still covers all captures.
-                    for capture in recent.prefix(250) {
+                    // Search every active capture when the local language model is available.
+                    // Cancellation remains cooperative between documents.
+                    for capture in recent {
                         if Task.isCancelled { break }
                         if exactIDs.contains(capture.id) { continue }
                         let sample = String((capture.title + "\n" + capture.text).prefix(600))
@@ -328,7 +328,7 @@ struct MemorySearchView: View {
                 if running { ProgressView("מחפש במכשיר…") }
                 if let response, !running {
                     if response.semanticAvailable {
-                        Text("חיפוש מילים ב־\(response.total) מקורות; דמיון סמנטי נבדק ב־\(response.semanticExamined) מקורות נוספים, מתוך עד 250 אחרונים.")
+                        Text("חיפוש מילים ב־\(response.total) מקורות; דמיון סמנטי נבדק ב־\(response.semanticExamined) מקורות נוספים, מכל הספרייה הפעילה.")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("חיפוש מקומי לפי מילים ב־\(response.total) מקורות. מודל סמנטי אינו זמין לשאלה זו.")
