@@ -21,7 +21,7 @@ import UIKit
 }
 enum NativeTheme {
     static let accent = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(red: 0.65, green: 0.84, blue: 0.71, alpha: 1) : UIColor(red: 0.17, green: 0.39, blue: 0.30, alpha: 1)
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.76, green: 0.72, blue: 1.0, alpha: 1) : UIColor(red: 0.318, green: 0.275, blue: 0.718, alpha: 1)
     })
     static let canvas = Color(uiColor: .systemGroupedBackground)
     static let surface = Color(uiColor: .secondarySystemGroupedBackground)
