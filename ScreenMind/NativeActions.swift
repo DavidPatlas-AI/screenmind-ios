@@ -45,10 +45,17 @@ struct NativeActionsView: View {
                             Text("פתח את המקור").font(.caption).foregroundStyle(NativeTheme.accent)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
                     }.buttonStyle(.borderless)
+                    if !completed {
+                        NavigationLink {
+                            ReminderEditorView(captureID: capture.id)
+                        } label: {
+                            Image(systemName: "bell").foregroundStyle(NativeTheme.accent)
+                        }.accessibilityLabel("תזכורת למשימה")
+                    }
                 }
             }
             Section {
-                Text("תאריכי היעד נשמרים כאן. התראות ושילוב ביומן עדיין אינם מחוברים.")
+                Text("אפשר לקבוע תזכורת מקומית למשימה פתוחה. שילוב ביומן עדיין אינו מחובר.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }.navigationTitle("הצעד הבא")
