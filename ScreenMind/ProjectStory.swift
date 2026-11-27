@@ -135,7 +135,9 @@ struct StoryHTMLDocument: FileDocument {
 
 struct ProjectStoryView: View {
     @EnvironmentObject private var library: NativeLibrary
-    let identity: ProjectIdentity
+    let identity: ProjectIdentity?
+    private let selectedIDs: Set<String>?
+    private let articleTitle: String
     let open: (Capture) -> Void
     @State private var draft: StoryDraft?
     @State private var images = true
@@ -145,11 +147,27 @@ struct ProjectStoryView: View {
     @State private var message: String?
     @State private var revision = 0
 
+    init(identity: ProjectIdentity, open: @escaping (Capture) -> Void) {
+        self.identity = identity
+        self.selectedIDs = nil
+        self.articleTitle = identity.title
+        self.open = open
+    }
+
+    init(title: String, selectedIDs: Set<String>, open: @escaping (Capture) -> Void) {
+        self.identity = nil
+        self.selectedIDs = selectedIDs
+        self.articleTitle = title
+        self.open = open
+        _images = State(initialValue: false)
+        _tasks = State(initialValue: false)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("ScreenMind Stories").font(.caption.bold()).foregroundStyle(NativeTheme.accent)
-                Text(identity.title).font(.largeTitle.bold()).textSelection(.enabled)
+                Text(articleTitle).font(.largeTitle.bold()).textSelection(.enabled)
                 if let draft {
                     Text(draft.introduction).font(.subheadline).foregroundStyle(.secondary)
                     Label("טיוטה מקומית מתוך המקורות, ללא כתיבה גנרטיבית.", systemImage: "checkmark.shield")
@@ -188,18 +206,25 @@ struct ProjectStoryView: View {
             }.padding(18)
         }
         .background(NativeTheme.canvas)
-        .navigationTitle("סיפור הפרויקט")
+        .navigationTitle(identity == nil ? "כתבה מהמקורות" : "סיפור הפרויקט")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: library.captures) { _, _ in revision += 1 }
         .task(id: revision) {
             let snapshot = library.active
-            let key = identity.key
-            let title = identity.title
+            let key = identity?.key
+            let ids = selectedIDs
+            let title = articleTitle
+            draft = nil
             let worker = Task.detached(priority: .utility) {
-                let selected = snapshot.filter { capture in
-                    let links = ProjectIdentity.detect(in: capture.title + "\n" + capture.text)
-                    return links.count == 1 && links.first?.key == key
-                }
+                let selected: [Capture]
+                if let ids {
+                    selected = ArticleSelection.sources(from: snapshot, ids: ids)
+                } else if let key {
+                    selected = snapshot.filter { capture in
+                        let links = ProjectIdentity.detect(in: capture.title + "\n" + capture.text)
+                        return links.count == 1 && links.first?.key == key
+                    }
+                } else { selected = [] }
                 return StoryDraft.build(title: title, captures: selected)
             }
             let result = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
@@ -250,5 +275,112 @@ struct ProjectStoryView: View {
         }
         document = StoryHTMLDocument(html: draft.html(images: previews, includeTasks: tasks))
         exporting = true
+    }
+}
+
+
+// Local article selection: source IDs, not new copies of personal data.
+enum ArticleSelection {
+    static let limit = StoryDraft.limit
+    static let pageSize = 60
+
+    static func sources(from captures: [Capture], ids: Set<String>) -> [Capture] {
+        var seen = Set<String>()
+        let matches = captures.filter { !$0.isArchived && ids.contains($0.id) && seen.insert($0.id).inserted }
+        return Array(matches.sorted {
+            $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate > $1.sourceDate
+        }.prefix(limit))
+    }
+
+    static func matches(_ capture: Capture, query: String) -> Bool {
+        let query = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+        if query.isEmpty { return true }
+        let haystack = capture.displayTitle + "\n" + capture.effectiveCollection + "\n" + String(capture.text.prefix(4000))
+        return haystack.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    }
+
+    static func title(_ raw: String) -> String {
+        let cleaned = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+        return cleaned.isEmpty ? "כתבה מהמקורות" : cleaned
+    }
+}
+
+struct ArticleStudioView: View {
+    @EnvironmentObject private var library: NativeLibrary
+    let open: (Capture) -> Void
+    @State private var selected = Set<String>()
+    @State private var query = ""
+    @State private var title = ""
+    @State private var onlySelected = false
+    @State private var shown = ArticleSelection.pageSize
+
+    private var validIDs: Set<String> {
+        Set(ArticleSelection.sources(from: library.active, ids: selected).map(\.id))
+    }
+
+    var body: some View {
+        let valid = validIDs
+        let filtered = library.active.filter {
+            (!onlySelected || valid.contains($0.id)) && ArticleSelection.matches($0, query: query)
+        }
+        List {
+            Section {
+                Text("מרעיון לכתבה").font(.title2.bold())
+                Text("בחר עד \(ArticleSelection.limit) מקורות. ניצור מסמך מקומי עם קטעי טקסט, תאריכים ומקורות — לא כתיבה גנרטיבית.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                TextField("כותרת הכתבה (רשות)", text: $title)
+                    .onChange(of: title) { _, value in
+                        if value.count > 120 { title = String(value.prefix(120)) }
+                    }
+                Text("\(valid.count) מקורות נבחרו").font(.headline).foregroundStyle(NativeTheme.accent)
+                    .accessibilityIdentifier("articleSelectedCount")
+                Toggle("הצג נבחרים בלבד", isOn: $onlySelected)
+                if !valid.isEmpty {
+                    NavigationLink {
+                        ProjectStoryView(title: ArticleSelection.title(title), selectedIDs: valid, open: open)
+                    } label: {
+                        Label("צור טיוטה מקומית", systemImage: "doc.text")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }.buttonStyle(.borderedProminent)
+                    Button("נקה בחירה", role: .destructive) { selected.removeAll() }
+                }
+            }
+            Section("בחר מקורות") {
+                if filtered.isEmpty {
+                    Text("לא נמצאו מקורות מתאימים.").foregroundStyle(.secondary)
+                }
+                ForEach(Array(filtered.prefix(shown))) { capture in
+                    Button {
+                        if selected.contains(capture.id) { selected.remove(capture.id) }
+                        else if valid.count < ArticleSelection.limit { selected.insert(capture.id) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: valid.contains(capture.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.title2).foregroundStyle(NativeTheme.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(capture.displayTitle).font(.headline).foregroundStyle(.primary)
+                                Text(capture.effectiveCollection).font(.caption).foregroundStyle(.secondary)
+                                Text(capture.text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer(minLength: 0)
+                        }.frame(minHeight: 44)
+                    }.buttonStyle(.plain)
+                        .disabled(valid.count >= ArticleSelection.limit && !valid.contains(capture.id))
+                        .accessibilityValue(valid.contains(capture.id) ? "נבחר" : "לא נבחר")
+                }
+                if filtered.count > shown {
+                    Button("הצג מקורות נוספים") { shown += ArticleSelection.pageSize }
+                }
+            }
+            Section {
+                Text("הבחירה אינה משנה את הצילומים, ואינה שולחת דבר לענן. ייצוא HTML עשוי לכלול מידע אישי. תמונות ומשימות אינן כלולות כברירת מחדל.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("יצירת כתבה")
+        .searchable(text: $query, prompt: "חפש כותרת, נושא או טקסט")
+        .onChange(of: query) { _, _ in shown = ArticleSelection.pageSize }
+        .onChange(of: onlySelected) { _, _ in shown = ArticleSelection.pageSize }
+        .onChange(of: library.captures) { _, _ in selected = validIDs }
     }
 }
