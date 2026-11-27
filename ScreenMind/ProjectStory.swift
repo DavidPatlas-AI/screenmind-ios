@@ -729,6 +729,25 @@ struct GroundedArticleView: View {
                                     !sharedSources(first, second).isEmpty
                                 })
                             }
+                            Section("קשרים אפשריים לפי מילים משותפות") {
+                                Text("הצעות מקומיות בלבד, לא אימות של כפילות או קשר במשמעות.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                ForEach(notebook) { note in
+                                    let matches = possibleMatches(for: note)
+                                    if !matches.isEmpty {
+                                        DisclosureGroup(note.title) {
+                                            ForEach(matches, id: \.note.id) { match in
+                                                VStack(alignment: .leading) {
+                                                    Text(match.note.title).font(.headline)
+                                                    Text("מילים משותפות: " + match.words.joined(separator: ", "))
+                                                        .font(.caption)
+                                                    Text(match.note.text).font(.caption).textSelection(.enabled)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             ForEach(notebook) { note in
                                 let related = relatedNotes(to: note)
                                 Section(note.title) {
@@ -828,6 +847,31 @@ struct GroundedArticleView: View {
         .onDisappear {
             work?.cancel(); work = nil; running = false; token = ""; approved = false
         }
+    }
+    private struct NotebookMatch {
+        let note: MemoryNotebookEntry
+        let words: [String]
+        let score: Double
+    }
+    private func notebookWords(_ note: MemoryNotebookEntry) -> Set<String> {
+        let ignored: Set<String> = ["מקור", "טיוטת", "לבדיקה", "screenmind", "שלנו", "שלהם", "מתוך", "אפשר", "ניתן", "מידע", "המקור", "with", "from", "this", "that", "have", "source"]
+        return Set((note.title + " " + note.text).lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 && !ignored.contains($0) && $0.contains(where: { $0.isLetter }) })
+    }
+    private func possibleMatches(for note: MemoryNotebookEntry) -> [NotebookMatch] {
+        let words = notebookWords(note)
+        guard !words.isEmpty else { return [] }
+        return notebook.compactMap { other -> NotebookMatch? in
+            guard other.id != note.id, Set(note.sourceIDs).isDisjoint(with: other.sourceIDs) else { return nil }
+            let otherWords = notebookWords(other)
+            let shared = words.intersection(otherWords)
+            let score = Double(shared.count) / Double(max(1, words.union(otherWords).count))
+            guard shared.count >= 3, score >= 0.15 else { return nil }
+            return NotebookMatch(note: other, words: Array(shared.sorted().prefix(8)), score: score)
+        }.sorted { lhs, rhs in
+            lhs.score == rhs.score ? lhs.note.id.uuidString < rhs.note.id.uuidString : lhs.score > rhs.score
+        }.prefix(3).map { $0 }
     }
     private func notebookTopic(_ note: MemoryNotebookEntry) -> String {
         var counts: [String: Int] = [:]
