@@ -228,10 +228,16 @@ actor MemorySearchEngine {
     static let shared = MemorySearchEngine()
     private var embeddings: [String: NLEmbedding] = [:]
     private var vectors: [String: [Double]] = [:]
+    private var vectorOrder: [String] = []
+    private var vectorHead = 0
+    private let vectorCapacity = 4096
     private var indexedCaptures: [Capture] = []
     private var lexicalIndex: MemoryLexicalIndex?
     nonisolated static func lexical(query: String, capture: Capture) -> MemorySearchHit? {
         MemoryLexicalIndex(captures: [capture]).search(query, limit: 1).first
+    }
+    nonisolated static func semanticCandidates(_ captures: [Capture], excluding: Set<String>) -> [Capture] {
+        captures.filter { !$0.isArchived && !excluding.contains($0.id) }
     }
     nonisolated static func cosine(_ lhs: [Double], _ rhs: [Double]) -> Double? {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
@@ -249,8 +255,16 @@ actor MemorySearchEngine {
         let key = language.rawValue + "\u{001F}" + text
         if let cached = vectors[key] { return cached }
         guard let value = model.vector(for: text), !value.isEmpty else { return nil }
-        if vectors.count >= 4096 { vectors.removeAll(keepingCapacity: true) }
+        if vectors.count >= vectorCapacity {
+            vectors.removeValue(forKey: vectorOrder[vectorHead])
+            vectorHead += 1
+            if vectorHead >= 1024 {
+                vectorOrder.removeFirst(vectorHead)
+                vectorHead = 0
+            }
+        }
         vectors[key] = value
+        vectorOrder.append(key)
         return value
     }
     func search(query: String, captures: [Capture]) -> MemorySearchResponse {
@@ -274,14 +288,11 @@ actor MemorySearchEngine {
                 if let queryVector = vector(cleaned, language: language, model: model) {
                     available = true
                     let exactIDs = Set(hits.filter { $0.match == .exact }.map(\.id))
-                    let recent = active.sorted {
-                        $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate > $1.sourceDate
-                    }
+                    let recent = Self.semanticCandidates(active, excluding: exactIDs)
                     // Search every active capture when the local language model is available.
                     // Cancellation remains cooperative between documents.
                     for capture in recent {
                         if Task.isCancelled { break }
-                        if exactIDs.contains(capture.id) { continue }
                         let sample = String((capture.title + "\n" + capture.text).prefix(600))
                         guard NLLanguageRecognizer.dominantLanguage(for: sample) == language,
                               let value = vector(sample, language: language, model: model) else { continue }
