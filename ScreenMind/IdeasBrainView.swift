@@ -6,6 +6,7 @@ struct IdeasBrainView: View {
     var onScan: () -> Void = {}
     var onScanAll: () -> Void = {}
     @State private var focusID = BrainGraph.rootID
+    @State private var spatial = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -20,9 +21,18 @@ struct IdeasBrainView: View {
                     if library.active.isEmpty {
                         empty
                     } else {
-                        canvas(graph: graph, scene: scene)
-                            .id(scene.focusID)
-                            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        Picker("תצוגת המוח", selection: $spatial) {
+                            Text("מפה").tag(false)
+                            Text("מרחב תלת־ממדי").tag(true)
+                        }.pickerStyle(.segmented)
+                        if spatial {
+                            SpatialBrainView(graph: graph, focusID: scene.focusID, activate: activate)
+                                .id(scene.focusID)
+                        } else {
+                            canvas(graph: graph, scene: scene)
+                                .id(scene.focusID)
+                                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        }
                     }
                 }
                 .padding(18)
@@ -197,6 +207,115 @@ private struct BrainCanvas: View {
         case .inspiration: return Color.purple.opacity(0.12)
         case .evidence: return Color.teal.opacity(0.12)
         default: return NativeTheme.surface
+        }
+    }
+}
+
+
+private struct SpatialBrainView: View {
+    let graph: BrainGraph
+    let focusID: String
+    let activate: (BrainNode) -> Void
+    @State private var yaw = 0.3
+    @State private var pitch = 0.15
+    @State private var zoom = 1.0
+    @GestureState private var drag = CGSize.zero
+    @GestureState private var pinch = 1.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let ids = SpatialBrainLayout.visibleIDs(graph: graph, focusID: focusID)
+        let points = SpatialBrainLayout.project(ids: ids, yaw: yaw + Double(drag.width)/110,
+                                               pitch: pitch + Double(drag.height)/130, zoom: zoom * pinch)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("גרור לסיבוב, צבוט לשינוי מרחק. הקש על נקודה או על מקור ברשימה.")
+                .font(.caption).foregroundStyle(.secondary)
+            GeometryReader { proxy in
+                let size = proxy.size
+                let radius = min(size.width, size.height) * 0.26
+                let locations = Dictionary(uniqueKeysWithValues: points.map { p in
+                    (p.id, CGPoint(x: size.width/2 + p.x*radius, y: size.height/2 + p.y*radius))
+                })
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24).fill(NativeTheme.surface)
+                    Canvas { context, _ in
+                        guard let center = locations[focusID] else { return }
+                        for point in points where point.id != focusID {
+                            guard let end = locations[point.id] else { continue }
+                            var path = Path()
+                            path.move(to: center); path.addLine(to: end)
+                            context.stroke(path, with: .color(NativeTheme.accent.opacity(0.24)), lineWidth: 1)
+                        }
+                        for link in graph.links {
+                            guard let a = locations[link.fromID], let b = locations[link.toID] else { continue }
+                            var path = Path()
+                            path.move(to: a); path.addLine(to: b)
+                            context.stroke(path, with: .color(NativeTheme.accent.opacity(0.7)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        }
+                    }.accessibilityHidden(true)
+                    ForEach(points) { point in
+                        if let node = graph.node(point.id), let position = locations[point.id] {
+                            let central = node.id == focusID
+                            let diameter = central ? 66.0 : max(22, min(46, 31*point.scale))
+                            Button { activate(node) } label: {
+                                Circle()
+                                    .fill(central ? NativeTheme.accent : NativeTheme.accent.opacity(point.depth < 0 ? 0.45 : 0.85))
+                                    .overlay {
+                                        if central {
+                                            Image(systemName: "brain.head.profile").font(.title2).foregroundStyle(.white)
+                                        } else {
+                                            Image(systemName: node.kind == .topic ? "folder.fill" : "doc.text")
+                                                .font(.system(size: 12)).foregroundStyle(.white)
+                                        }
+                                    }
+                                    .frame(width: diameter, height: diameter)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                                .position(position)
+                                .accessibilityLabel(node.accessibilityText)
+                        }
+                    }
+                }
+                .environment(\.layoutDirection, .leftToRight)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 12)
+                    .updating($drag) { value, state, _ in state = value.translation }
+                    .onEnded { value in
+                        yaw = (yaw + Double(value.translation.width)/110).truncatingRemainder(dividingBy: 2 * .pi)
+                        pitch = max(-1.25, min(1.25, pitch + Double(value.translation.height)/130))
+                    })
+                .simultaneousGesture(MagnificationGesture()
+                    .updating($pinch) { value, state, _ in state = Double(value) }
+                    .onEnded { value in zoom = max(0.7, min(1.25, zoom * Double(value))) })
+                .clipped()
+            }.frame(height: 310)
+            HStack {
+                Button("סובב") { yaw = (yaw + .pi/4).truncatingRemainder(dividingBy: 2 * .pi) }
+                Spacer()
+                Button("אפס תצוגה") {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                        yaw = 0.3; pitch = 0.15; zoom = 1
+                    }
+                }
+            }.buttonStyle(.bordered)
+            Text("המקורות והנושאים המוצגים").font(.headline)
+            ForEach(ids.filter { $0 != focusID }, id: \.self) { id in
+                if let node = graph.node(id) {
+                    Button { activate(node) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(node.title).font(.subheadline.bold()).foregroundStyle(.primary)
+                                Text(node.subtitle).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward").font(.caption)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }.buttonStyle(.plain)
+                }
+            }
+            Text("מוצגים עד 15 פריטים סביב המוקד. כל שאר המקורות זמינים במפה הרגילה ובספרייה. קווים מקווקווים מסמנים קשר המבוסס על מילים משותפות, לא עובדה מאומתת.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }
