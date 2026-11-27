@@ -240,6 +240,20 @@ struct NativeHome: View {
                         }.padding(16).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
                     }.buttonStyle(.plain)
                     libraryOverview
+                    NavigationLink {
+                        AttentionCenterView(open: { selected = $0 })
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "bell.badge").font(.title2)
+                                .foregroundStyle(NativeTheme.accent).accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("מרכז תשומת הלב").font(.headline).foregroundStyle(.primary)
+                                Text("משימות, הזדמנויות ומידע שכדאי לבדוק").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
+                        }.padding(16).background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
+                    }.buttonStyle(.plain)
                 }
                 albumCard
                 if library.captures.isEmpty {
