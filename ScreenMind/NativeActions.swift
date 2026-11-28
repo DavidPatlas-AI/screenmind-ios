@@ -314,6 +314,16 @@ actor MemorySearchEngine {
     }
 }
 
+enum MemorySearchScope {
+    static func filter(_ captures: [Capture], collection: String, days: Int, now: Date = Date()) -> [Capture] {
+        let cutoff = days > 0 ? Calendar.current.date(byAdding: .day, value: -days, to: now) : nil
+        return captures.filter { capture in
+            !capture.isArchived && (collection.isEmpty || capture.effectiveCollection == collection)
+                && (cutoff.map { capture.sourceDate >= $0 && capture.sourceDate <= now } ?? true)
+        }
+    }
+}
+
 struct MemorySearchView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
@@ -324,10 +334,14 @@ struct MemorySearchView: View {
     @State private var recentQuestions: [String] = []
     @State private var contextQuestion = ""
     @State private var useContext = false
+    @State private var collection = ""
+    @State private var days = 0
     private struct Request: Hashable {
         let query: String
         let revision: Int
         let context: String
+        let collection: String
+        let days: Int
     }
     private var activeContext: String { useContext ? contextQuestion : "" }
     var body: some View {
@@ -346,6 +360,21 @@ struct MemorySearchView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+            }
+            Section("סינון חיפוש") {
+                Picker("תקופה", selection: $days) {
+                    Text("כל התקופות").tag(0)
+                    Text("7 ימים").tag(7)
+                    Text("30 ימים").tag(30)
+                    Text("90 ימים").tag(90)
+                }
+                Picker("נושא או אוסף", selection: $collection) {
+                    Text("כל האוספים").tag("")
+                    ForEach(Array(Set(library.captures.filter { !$0.isArchived }.map(\.effectiveCollection))).filter { !$0.isEmpty }.sorted(), id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                Button("נקה סינון") { collection = ""; days = 0 }
             }
             if !recentQuestions.isEmpty {
                 Section("שאלות אחרונות — בהפעלה זו בלבד") {
@@ -422,7 +451,7 @@ struct MemorySearchView: View {
         .navigationTitle("חיפוש חכם")
         .searchable(text: $query, prompt: "מה אני רוצה למצוא?")
         .onChange(of: library.captures) { _, _ in revision += 1 }
-        .task(id: Request(query: query, revision: revision, context: activeContext)) {
+        .task(id: Request(query: query, revision: revision, context: activeContext, collection: collection, days: days)) {
             response = nil
             let input = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if input.isEmpty { running = false; return }
@@ -430,7 +459,7 @@ struct MemorySearchView: View {
             do { try await Task.sleep(nanoseconds: 350_000_000) }
             catch { return }
             let searchText = activeContext.isEmpty ? input : activeContext + " " + input
-            let result = await MemorySearchEngine.shared.search(query: searchText, captures: library.captures)
+            let result = await MemorySearchEngine.shared.search(query: searchText, captures: MemorySearchScope.filter(library.captures, collection: collection, days: days))
             guard !Task.isCancelled else { return }
             response = result
             running = false
