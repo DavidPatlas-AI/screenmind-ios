@@ -21,6 +21,14 @@ struct IdeasBrainView: View {
                     if library.active.isEmpty {
                         empty
                     } else {
+                        NavigationLink {
+                            MemoryEvolutionView(open: open)
+                        } label: {
+                            Label("מה השתנה בתיעוד?", systemImage: "clock.arrow.circlepath")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain)
                         Picker("תצוגת המוח", selection: $spatial) {
                             Text("מפה").tag(false)
                             Text("מרחב תלת־ממדי").tag(true)
