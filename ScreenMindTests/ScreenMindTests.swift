@@ -370,6 +370,17 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testMemorySearchScopeCombinesDateCollectionAndArchive() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recent = idea("recent", title: "Sample", text: "sample", collection: "Project A", at: now)
+        let old = idea("old", title: "Sample", text: "sample", collection: "Project A", at: now.addingTimeInterval(-40 * 86400))
+        let other = idea("other", title: "Sample", text: "sample", collection: "Project B", at: now)
+        var archived = idea("archived", title: "Sample", text: "sample", collection: "Project A", at: now)
+        archived.isArchived = true
+        let captures = [recent, old, other, archived]
+        XCTAssertEqual(MemorySearchScope.filter(captures, collection: "Project A", days: 30, now: now).map(\.id), ["recent"])
+        XCTAssertEqual(MemorySearchScope.filter(captures, collection: "", days: 0, now: now).count, 3)
+    }
     func testHebrewTypoSearchPreservesExactPriorityAndIgnoresNumbers() {
         let now = Date()
         let exact = idea("exact", title: "חשבונית", text: "123456", at: now)
