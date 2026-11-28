@@ -228,10 +228,16 @@ actor MemorySearchEngine {
     static let shared = MemorySearchEngine()
     private var embeddings: [String: NLEmbedding] = [:]
     private var vectors: [String: [Double]] = [:]
+    private var vectorOrder: [String] = []
+    private var vectorHead = 0
+    private let vectorCapacity = 4096
     private var indexedCaptures: [Capture] = []
     private var lexicalIndex: MemoryLexicalIndex?
     nonisolated static func lexical(query: String, capture: Capture) -> MemorySearchHit? {
         MemoryLexicalIndex(captures: [capture]).search(query, limit: 1).first
+    }
+    nonisolated static func semanticCandidates(_ captures: [Capture], excluding: Set<String>) -> [Capture] {
+        captures.filter { !$0.isArchived && !excluding.contains($0.id) }
     }
     nonisolated static func cosine(_ lhs: [Double], _ rhs: [Double]) -> Double? {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
@@ -249,8 +255,16 @@ actor MemorySearchEngine {
         let key = language.rawValue + "\u{001F}" + text
         if let cached = vectors[key] { return cached }
         guard let value = model.vector(for: text), !value.isEmpty else { return nil }
-        if vectors.count >= 500 { vectors.removeAll(keepingCapacity: true) }
+        if vectors.count >= vectorCapacity {
+            vectors.removeValue(forKey: vectorOrder[vectorHead])
+            vectorHead += 1
+            if vectorHead >= 1024 {
+                vectorOrder.removeFirst(vectorHead)
+                vectorHead = 0
+            }
+        }
         vectors[key] = value
+        vectorOrder.append(key)
         return value
     }
     func search(query: String, captures: [Capture]) -> MemorySearchResponse {
@@ -274,14 +288,11 @@ actor MemorySearchEngine {
                 if let queryVector = vector(cleaned, language: language, model: model) {
                     available = true
                     let exactIDs = Set(hits.filter { $0.match == .exact }.map(\.id))
-                    let recent = active.sorted {
-                        $0.sourceDate == $1.sourceDate ? $0.id < $1.id : $0.sourceDate > $1.sourceDate
-                    }
-                    // Bounded on-device work for older iPhones. No claim of a full
-                    // semantic index; exact/partial matching still covers all captures.
-                    for capture in recent.prefix(250) {
+                    let recent = Self.semanticCandidates(active, excluding: exactIDs)
+                    // Search every active capture when the local language model is available.
+                    // Cancellation remains cooperative between documents.
+                    for capture in recent {
                         if Task.isCancelled { break }
-                        if exactIDs.contains(capture.id) { continue }
                         let sample = String((capture.title + "\n" + capture.text).prefix(600))
                         guard NLLanguageRecognizer.dominantLanguage(for: sample) == language,
                               let value = vector(sample, language: language, model: model) else { continue }
@@ -303,6 +314,16 @@ actor MemorySearchEngine {
     }
 }
 
+enum MemorySearchScope {
+    static func filter(_ captures: [Capture], collection: String, days: Int, now: Date = Date()) -> [Capture] {
+        let cutoff = days > 0 ? Calendar.current.date(byAdding: .day, value: -days, to: now) : nil
+        return captures.filter { capture in
+            !capture.isArchived && (collection.isEmpty || capture.effectiveCollection == collection)
+                && (cutoff.map { capture.sourceDate >= $0 && capture.sourceDate <= now } ?? true)
+        }
+    }
+}
+
 struct MemorySearchView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
@@ -310,10 +331,19 @@ struct MemorySearchView: View {
     @State private var response: MemorySearchResponse?
     @State private var running = false
     @State private var revision = 0
+    @State private var recentQuestions: [String] = []
+    @State private var contextQuestion = ""
+    @State private var useContext = false
+    @State private var collection = ""
+    @State private var days = 0
     private struct Request: Hashable {
         let query: String
         let revision: Int
+        let context: String
+        let collection: String
+        let days: Int
     }
+    private var activeContext: String { useContext ? contextQuestion : "" }
     var body: some View {
         List {
             Section {
@@ -323,7 +353,7 @@ struct MemorySearchView: View {
                 if running { ProgressView("מחפש במכשיר…") }
                 if let response, !running {
                     if response.semanticAvailable {
-                        Text("חיפוש מילים ב־\(response.total) מקורות; דמיון סמנטי נבדק ב־\(response.semanticExamined) מקורות נוספים, מתוך עד 250 אחרונים.")
+                        Text("חיפוש מילים ב־\(response.total) מקורות; דמיון סמנטי נבדק ב־\(response.semanticExamined) מקורות נוספים, מכל הספרייה הפעילה.")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("חיפוש מקומי לפי מילים ב־\(response.total) מקורות. מודל סמנטי אינו זמין לשאלה זו.")
@@ -331,7 +361,74 @@ struct MemorySearchView: View {
                     }
                 }
             }
+            Section("סינון חיפוש") {
+                Picker("תקופה", selection: $days) {
+                    Text("כל התקופות").tag(0)
+                    Text("7 ימים").tag(7)
+                    Text("30 ימים").tag(30)
+                    Text("90 ימים").tag(90)
+                }
+                Picker("נושא או אוסף", selection: $collection) {
+                    Text("כל האוספים").tag("")
+                    ForEach(Array(Set(library.captures.filter { !$0.isArchived }.map(\.effectiveCollection))).filter { !$0.isEmpty }.sorted(), id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                Button("נקה סינון") { collection = ""; days = 0 }
+            }
+            if !recentQuestions.isEmpty {
+                Section("שאלות אחרונות — בהפעלה זו בלבד") {
+                    ForEach(recentQuestions, id: \.self) { question in
+                        Button { useContext = false; query = question } label: {
+                            Label(question, systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                    Button("נקה היסטוריה", role: .destructive) { recentQuestions.removeAll(); contextQuestion = ""; useContext = false }
+                }
+            }
+            if !contextQuestion.isEmpty {
+                Section("הקשר לחיפוש המשך") {
+                    Text(contextQuestion).font(.caption).textSelection(.enabled)
+                    Toggle("כלול שאלה קודמת בחיפוש המקומי", isOn: $useContext)
+                    Button("הסר הקשר") { useContext = false; contextQuestion = "" }
+                }
+            }
             if let response, !running {
+                Section {
+                    Button {
+                        let question = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !question.isEmpty else { return }
+                        recentQuestions.removeAll { $0 == question }
+                        recentQuestions.insert(question, at: 0)
+                        recentQuestions = Array(recentQuestions.prefix(12))
+                    } label: {
+                        Label("שמור שאלה להפעלה זו", systemImage: "bookmark")
+                    }
+                    Button("השתמש בשאלה זו כהקשר לשאלה הבאה") {
+                        contextQuestion = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+                        query = ""
+                        useContext = true
+                    }.disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Text("ההקשר משמש להרחבת החיפוש המקומי בלבד. אין עדיין הבנה של תשובות קודמות.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                let candidates = Array(response.hits.compactMap { library.capture($0.id) }
+                    .filter { !$0.isArchived && $0.text.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count >= 12 }
+                    .prefix(8))
+                if !candidates.isEmpty {
+                    Section("תשובה מתוך הזיכרון") {
+                        Text("נמצאו מקורות אפשריים לשאלה. בדוק אותם לפני יצירת טיוטה. החיפוש המקומי אינו תשובה מאומתת.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        NavigationLink {
+                            GroundedArticleView(title: GroundedArticleResult.clip(query, limit: 120),
+                                                captures: candidates, open: open)
+                        } label: {
+                            Label("הכן טיוטת כתבה בנושא מ־\(candidates.count) מקורות באמצעות AI", systemImage: "sparkles")
+                        }
+                        Text("השליחה לשרת פרטי אופציונלית ודורשת אישור. ניתן להסיר מקורות ולערוך את הטקסט לפני השליחה. גם כותרת השאלה תישלח.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 if response.hits.isEmpty {
                     ContentUnavailableView("לא נמצאה התאמה", systemImage: "magnifyingglass",
                                            description: Text("נסה שם, מילה אחרת או ביטוי קצר. צילומים שלא זוהה בהם טקסט עלולים שלא להופיע."))
@@ -354,14 +451,15 @@ struct MemorySearchView: View {
         .navigationTitle("חיפוש חכם")
         .searchable(text: $query, prompt: "מה אני רוצה למצוא?")
         .onChange(of: library.captures) { _, _ in revision += 1 }
-        .task(id: Request(query: query, revision: revision)) {
+        .task(id: Request(query: query, revision: revision, context: activeContext, collection: collection, days: days)) {
             response = nil
             let input = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if input.isEmpty { running = false; return }
             running = true
             do { try await Task.sleep(nanoseconds: 350_000_000) }
             catch { return }
-            let result = await MemorySearchEngine.shared.search(query: input, captures: library.captures)
+            let searchText = activeContext.isEmpty ? input : activeContext + " " + input
+            let result = await MemorySearchEngine.shared.search(query: searchText, captures: MemorySearchScope.filter(library.captures, collection: collection, days: days))
             guard !Task.isCancelled else { return }
             response = result
             running = false

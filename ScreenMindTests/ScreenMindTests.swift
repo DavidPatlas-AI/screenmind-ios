@@ -370,6 +370,63 @@ import UIKit
         XCTAssertFalse(index.search("משאית").contains(where: { $0.id == "category" }))
         XCTAssertEqual(index.search("משאית").first?.match, .related)
     }
+    func testMemorySearchScopeCombinesDateCollectionAndArchive() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recent = idea("recent", title: "Sample", text: "sample", collection: "Project A", at: now)
+        let old = idea("old", title: "Sample", text: "sample", collection: "Project A", at: now.addingTimeInterval(-40 * 86400))
+        let other = idea("other", title: "Sample", text: "sample", collection: "Project B", at: now)
+        var archived = idea("archived", title: "Sample", text: "sample", collection: "Project A", at: now)
+        archived.isArchived = true
+        let captures = [recent, old, other, archived]
+        XCTAssertEqual(MemorySearchScope.filter(captures, collection: "Project A", days: 30, now: now).map(\.id), ["recent"])
+        XCTAssertEqual(MemorySearchScope.filter(captures, collection: "", days: 0, now: now).count, 3)
+    }
+    func testHebrewTypoSearchPreservesExactPriorityAndIgnoresNumbers() {
+        let now = Date()
+        let exact = idea("exact", title: "חשבונית", text: "123456", at: now)
+        let typo = idea("typo", title: "חשבוית", text: "ציוד", at: now)
+        let index = MemoryLexicalIndex(captures: [typo, exact])
+        XCTAssertEqual(index.search("חשבונית").first?.id, "exact")
+        XCTAssertTrue(index.search("חשבונית").contains { $0.id == "typo" })
+        XCTAssertEqual(index.search("חשבוית").first?.id, "typo")
+        XCTAssertTrue(index.search("חשבוניח").contains { $0.id == "exact" })
+        XCTAssertTrue(index.search("123457").isEmpty)
+        XCTAssertTrue(index.search("כלב").isEmpty)
+    }
+    func testHebrewPhraseRankingAndPluralConcepts() {
+        let now = Date()
+        let phrase = idea("z-phrase", title: "ניהול משימות", text: "כלי עבודה", at: now)
+        let reversed = idea("a-reversed", title: "משימות ניהול", text: "כלי עבודה", at: now)
+        let invoice = idea("invoice", title: "חשבוניות", text: "2026", at: now)
+        let index = MemoryLexicalIndex(captures: [reversed, invoice, phrase])
+        XCTAssertEqual(index.search("ניהול משימות").first?.id, "z-phrase")
+        XCTAssertEqual(index.search("חשבונית").first?.id, "invoice")
+        XCTAssertEqual(index.search("חשבונית").first?.match, .related)
+    }
+    func testSemanticCandidatesCoverEntireLargeLibrary() {
+        let now = Date()
+        var captures = (0..<3000).map { index in
+            idea("capture-\(index)", title: "Sample", text: "Document \(index)", at: now.addingTimeInterval(Double(index)))
+        }
+        captures[1].isArchived = true
+        let candidates = MemorySearchEngine.semanticCandidates(captures, excluding: ["capture-2"])
+        XCTAssertEqual(candidates.count, 2998)
+        XCTAssertTrue(candidates.contains { $0.id == "capture-0" })
+        XCTAssertTrue(candidates.contains { $0.id == "capture-2999" })
+        XCTAssertFalse(candidates.contains { $0.id == "capture-1" || $0.id == "capture-2" })
+    }
+    func testLocalConceptSearchSupportsHebrewSynonymsAndRussian() {
+        let now = Date()
+        let bug = idea("bug", title: "באג", text: "SwiftUI", at: now)
+        let expense = idea("expense", title: "расходы", text: "2026", at: now)
+        let purchase = idea("purchase", title: "קנייה", text: "ציוד", at: now)
+        let index = MemoryLexicalIndex(captures: [expense, purchase, bug])
+        XCTAssertEqual(index.search("תקלה").first?.id, "bug")
+        XCTAssertEqual(index.search("תקלה").first?.match, .related)
+        XCTAssertEqual(index.search("הוצאות").first?.id, "expense")
+        XCTAssertEqual(index.search("רכישה").first?.id, "purchase")
+        XCTAssertTrue(index.search("הצפנה").isEmpty)
+    }
     func testMemorySearchRanksRelevantWordsAndRejectsUnrelatedSources() {
         let now = Date()
         let capture = idea("code", title: "מדריך GitHub", text: "SwiftUI פיתוח אפליקציה", at: now)

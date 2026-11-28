@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 struct NativeHome: View {
     @EnvironmentObject private var library: NativeLibrary
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab = 0
     @State private var picker: [PhotosPickerItem] = []
     @State private var selected: Capture?
@@ -32,6 +33,18 @@ struct NativeHome: View {
             tabPage {
                 NativeActionsView(open: { selected = $0 }).toolbar { toolbar }
             }.tabItem { Label("הצעד הבא", systemImage: "checklist") }.tag(4)
+        }
+        .privacySensitive()
+        .overlay {
+            if scenePhase != .active {
+                ZStack {
+                    Color(uiColor: .systemBackground).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.shield").font(.largeTitle)
+                        Text("ScreenMind").font(.headline)
+                    }.foregroundStyle(.secondary)
+                }.accessibilityHidden(true)
+            }
         }
         .onChange(of: picker) { _, items in
             guard !items.isEmpty else { return }
@@ -216,6 +229,44 @@ struct NativeHome: View {
             .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 15))
         }.buttonStyle(.plain)
     }
+    private var knowledgeHub: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("מרכז הזיכרון").font(.title2.bold())
+            NavigationLink {
+                MemorySearchView(open: { selected = $0 })
+            } label: {
+                hubLabel("שאל את הזיכרון", detail: "חיפוש מקומי ושאלות המשך", icon: "magnifyingglass")
+            }
+            NavigationLink {
+                GroundedArticleView(title: "", captures: [], open: { selected = $0 })
+            } label: {
+                hubLabel("מחברת ותובנות", detail: "טיוטות שמורות ומפת קשרים", icon: "book.closed")
+            }
+            Button { tab = 2 } label: {
+                hubLabel("המוח שלי", detail: "רעיונות וצילומי מסך", icon: "brain.head.profile")
+            }
+            Button { tab = 3 } label: {
+                hubLabel("מרחבי ידע", detail: "נושאים ואוספים", icon: "folder")
+            }
+            Button { tab = 4 } label: {
+                hubLabel("הצעד הבא", detail: "משימות ופעולות", icon: "checklist")
+            }
+        }.buttonStyle(.plain)
+    }
+    private func hubLabel(_ title: String, detail: String, icon: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.title2).foregroundStyle(NativeTheme.accent)
+                .frame(width: 36).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.backward").font(.caption).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }.padding(14).frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .background(NativeTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
     private var home: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -224,9 +275,9 @@ struct NativeHome: View {
                     Text("הצילומים מתארגנים לנושאים. אין צורך למיין אחד־אחד.").foregroundStyle(.secondary)
                 }.padding(.top, 12)
                 if !library.captures.isEmpty {
-                    homeSearch
                     libraryOverview
                 }
+                knowledgeHub
                 albumCard
                 if library.captures.isEmpty {
                     ContentUnavailableView {

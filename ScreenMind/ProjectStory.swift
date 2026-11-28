@@ -512,10 +512,128 @@ enum GroundedArticleClient {
     }
 }
 
+private struct MemoryNotebookEntry: Codable, Identifiable {
+    let id: UUID
+    let date: Date
+    let title: String
+    let text: String
+    let sourceIDs: [String]
+}
+
+private struct MemoryNotebookGraph: View {
+    let notes: [MemoryNotebookEntry]
+    let topic: (MemoryNotebookEntry) -> String
+    let connected: (MemoryNotebookEntry, MemoryNotebookEntry) -> Bool
+    @State private var selectedID: UUID?
+    @State private var selectedTopic: String?
+    private var topics: [String] { Array(Set(notes.map(topic))).sorted() }
+    private var visible: [MemoryNotebookEntry] {
+        Array(notes.filter { selectedTopic == nil || topic($0) == selectedTopic }.prefix(12))
+    }
+    private func color(_ note: MemoryNotebookEntry) -> Color {
+        let palette: [Color] = [.purple, .blue, .teal, .orange, .pink, .indigo, .green]
+        let index = topics.firstIndex(of: topic(note)) ?? 0
+        return palette[index % palette.count]
+    }
+    @State private var yaw = 0.0
+    @State private var pitch = 0.0
+    @State private var zoom = 0.85
+    private func projection(_ index: Int, count: Int, size: CGSize) -> (point: CGPoint, depth: Double) {
+        let n = Double(max(count, 1))
+        let y = 1 - 2 * (Double(index) + 0.5) / n
+        let ring = sqrt(max(0, 1 - y * y))
+        let angle = Double(index) * Double.pi * (3 - sqrt(5.0)) + yaw
+        let x = ring * cos(angle)
+        let z = ring * sin(angle)
+        let vertical = y * cos(pitch) - z * sin(pitch)
+        let depth = y * sin(pitch) + z * cos(pitch)
+        let perspective = 3 / (3 - depth)
+        let radius = max(0, min(size.width, size.height) / 2 - 36) * CGFloat(zoom)
+        return (CGPoint(x: size.width / 2 + CGFloat(x * perspective) * radius,
+                        y: size.height / 2 + CGFloat(vertical * perspective) * radius), depth)
+    }
+    
+    var body: some View {
+        let nodes = visible
+        let edges = nodes.indices.flatMap { i in
+            nodes.indices.filter { j in j > i && connected(nodes[i], nodes[j]) }.map { (i, $0) }
+        }
+        let colors = nodes.map(color)
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("מוצגות עד 12 הרשומות האחרונות. קו מציין מקור משותף זמין.")
+                .font(.caption).foregroundStyle(.secondary)
+            Picker("סינון לפי נושא", selection: $selectedTopic) {
+                Text("כל הנושאים").tag(nil as String?)
+                ForEach(topics, id: \.self) { name in
+                    Text(name).tag(Optional(name))
+                }
+            }
+            ForEach(topics, id: \.self) { name in
+                if let sample = notes.first(where: { topic($0) == name }) {
+                    Label(name + " · " + String(notes.filter { topic($0) == name }.count),
+                          systemImage: "circle.fill").foregroundStyle(color(sample))
+                        .font(.caption)
+                }
+            }
+            GeometryReader { geometry in
+                ZStack {
+                    Canvas { context, size in
+                        for (i, j) in edges {
+                                    var line = Path()
+                                    line.move(to: projection(i, count: nodes.count, size: size).point)
+                                    line.addLine(to: projection(j, count: nodes.count, size: size).point)
+                                    context.stroke(line, with: .color(.purple.opacity(0.5)), lineWidth: 2)
+                        }
+                    }.accessibilityHidden(true)
+                    ForEach(nodes.indices, id: \.self) { index in
+                        let note = nodes[index]
+                        Button {
+                            selectedID = note.id
+                        } label: {
+                            ZStack {
+                                Circle().fill(colors[index])
+                                Text(String(index + 1)).font(.caption.bold()).foregroundStyle(.white)
+                            }.frame(width: 44, height: 44)
+                            .overlay(Circle().strokeBorder(Color.primary, lineWidth: selectedID == note.id ? 3 : 0))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(note.title)
+                        .scaleEffect(CGFloat(0.85 + 0.15 * projection(index, count: nodes.count, size: geometry.size).depth))
+                        .zIndex(projection(index, count: nodes.count, size: geometry.size).depth + 2)
+                        .position(projection(index, count: nodes.count, size: geometry.size).point)
+                    }
+                }
+            }.frame(height: 280)
+            VStack(alignment: .leading) {
+                Text("סיבוב אופקי").font(.caption)
+                Slider(value: $yaw, in: -Double.pi...Double.pi)
+                Text("הטיה אנכית").font(.caption)
+                Slider(value: $pitch, in: -1.5...1.5)
+                Text("מרחק תצוגה").font(.caption)
+                Slider(value: $zoom, in: 0.45...1.0)
+                Button("אפס תצוגה") { yaw = 0; pitch = 0; zoom = 0.85 }
+                    .buttonStyle(.borderless)
+            }
+            if let note = nodes.first(where: { $0.id == selectedID }) {
+                Text(note.title).font(.headline)
+                Text(topic(note)).font(.caption).foregroundStyle(.secondary)
+                Text(note.text).font(.caption).textSelection(.enabled)
+            }
+            ForEach(nodes.indices, id: \.self) { index in
+                Button("\(index + 1). \(nodes[index].title)") {
+                    selectedID = nodes[index].id
+                }.buttonStyle(.borderless)
+            }
+        }
+    }
+}
+
 struct GroundedArticleView: View {
     @EnvironmentObject private var library: NativeLibrary
     let open: (Capture) -> Void
     private let origins: [String: Capture]
+    private var notebookOnly: Bool { origins.isEmpty }
+    @AppStorage("screenmind.memoryNotebook.v1") private var notebookData = Data()
     @State private var title: String
     @State private var items: [GroundedArticleInput]
     @State private var language = "he"
@@ -552,6 +670,7 @@ struct GroundedArticleView: View {
     }
     var body: some View {
         List {
+            if !notebookOnly {
             Section {
                 Text("כתבה עם ציטוטים").font(.title2.bold())
                 Text("ניסוי בכתיבה גנרטיבית מ־1 עד 8 מקורות. הטקסט שנבחר יעבור לשרת פרטי ולספק AI רק לאחר אישור ושליחה. לא נשלחים תמונות או מזהי ספרייה.")
@@ -600,8 +719,120 @@ struct GroundedArticleView: View {
                 }
                 if !message.isEmpty { Text(message).font(.caption) }
             }
+            }
+            if notebookOnly && notebook.isEmpty {
+                ContentUnavailableView("המחברת עדיין ריקה", systemImage: "book.closed", description: Text("אפשר ליצור טיוטה מתוך החיפוש החכם ולשמור אותה כאן."))
+            }
+            if !notebook.isEmpty {
+                Section("תובנות מהזיכרון") {
+                    Text("הצעות לבדיקה לפי גיל הרשומה ומקורות משותפים. אין כאן קביעה שפרויקט לא הושלם.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(notebook.filter { Date().timeIntervalSince($0.date) >= 30 * 86400 }
+                        .sorted { $0.date < $1.date }.prefix(3)) { note in
+                        DisclosureGroup {
+                            Text(note.text).textSelection(.enabled)
+                            ForEach(note.sourceIDs, id: \.self) { id in
+                                if let capture = library.capture(id), !capture.isArchived {
+                                    Button("פתח מקור: " + capture.displayTitle) { open(capture) }
+                                }
+                            }
+                        } label: {
+                            Label("כדאי לעיין שוב: " + note.title, systemImage: "clock")
+                        }
+                    }
+                    ForEach(notebook.filter { !relatedNotes(to: $0).isEmpty }.prefix(3)) { note in
+                        DisclosureGroup {
+                            ForEach(relatedNotes(to: note).prefix(3)) { other in
+                                Text(other.title).font(.headline)
+                                Text(other.text).font(.caption).textSelection(.enabled)
+                            }
+                        } label: {
+                            Label("אפשר לחבר ידע: " + note.title, systemImage: "link")
+                        }
+                    }
+                    if notebook.allSatisfy({ Date().timeIntervalSince($0.date) < 30 * 86400 && relatedNotes(to: $0).isEmpty }) {
+                        Text("אין כרגע הצעות לפי הכללים המקומיים.").font(.caption)
+                    }
+                }
+                Section("מפת קשרים מקומית") {
+                    Text("קשרים מבוססים על צילומי מקור משותפים שעדיין זמינים. אין הסקת קשר סמנטי אוטומטית.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    NavigationLink {
+                        List {
+                            Section("רשת מקורות משותפים") {
+                                MemoryNotebookGraph(notes: notebook, topic: notebookTopic, connected: { first, second in
+                                    !sharedSources(first, second).isEmpty
+                                })
+                            }
+                            Section("קשרים אפשריים לפי מילים משותפות") {
+                                Text("הצעות מקומיות בלבד, לא אימות של כפילות או קשר במשמעות.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                ForEach(notebook) { note in
+                                    let matches = possibleMatches(for: note)
+                                    if !matches.isEmpty {
+                                        DisclosureGroup(note.title) {
+                                            ForEach(matches, id: \.note.id) { match in
+                                                VStack(alignment: .leading) {
+                                                    Text(match.note.title).font(.headline)
+                                                    Text("מילים משותפות: " + match.words.joined(separator: ", "))
+                                                        .font(.caption)
+                                                    Text(match.note.text).font(.caption).textSelection(.enabled)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            ForEach(notebook) { note in
+                                let related = relatedNotes(to: note)
+                                Section(note.title) {
+                                    if related.isEmpty {
+                                        Text("אין קשרי מקור זמינים").font(.caption)
+                                    }
+                                    ForEach(related) { other in
+                                        DisclosureGroup {
+                                            Text(other.text).textSelection(.enabled)
+                                            ForEach(sharedSources(note, other), id: \.self) { id in
+                                                if let capture = library.capture(id), !capture.isArchived {
+                                                    Button("מקור משותף: " + capture.displayTitle) { open(capture) }
+                                                }
+                                            }
+                                        } label: {
+                                            Label(other.title, systemImage: "link")
+                                        }
+                                    }
+                                }
+                            }
+                        }.navigationTitle("מפת קשרים")
+                    } label: {
+                        Label("גלה קשרים בין רשומות", systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                }
+            }
+            Section("מחברת הזיכרון — טיוטות AI") {
+                Text("שמירה מקומית מפורשת בלבד. הטיוטות עשויות להכיל מידע אישי ולהיכלל בגיבוי המכשיר. מחיקת צילום אינה מוחקת טיוטה שנשמרה.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(notebook) { note in
+                    DisclosureGroup(note.title) {
+                        Text(note.date, style: .date).font(.caption)
+                        Text(note.text).textSelection(.enabled)
+                        ForEach(note.sourceIDs, id: \.self) { id in
+                            if let capture = library.capture(id), !capture.isArchived {
+                                Button("פתח מקור: " + capture.displayTitle) { open(capture) }
+                            } else {
+                                Text("מקור אינו זמין").font(.caption)
+                            }
+                        }
+                        Button("מחק טיוטה", role: .destructive) {
+                            if let encoded = try? JSONEncoder().encode(notebook.filter { $0.id != note.id }) {
+                                notebookData = encoded
+                            }
+                        }
+                    }
+                }
+            }
             if let result, current {
-                Section("טיוטה לבדיקה — לא נשמרה") {
+                Section("טיוטה לבדיקה") {
                     Text(result.title).font(.title.bold()).textSelection(.enabled)
                     Text("הציטוטים נבדקו מול הטקסט שנשלח. אין בכך אימות שהטענות נכונות או נתמכות במלואן.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -620,15 +851,29 @@ struct GroundedArticleView: View {
                             }
                         }
                     }
+                    Button("שמור במחברת הזיכרון במכשיר") {
+                        guard current else { return }
+                        var notes = notebook
+                        let ids = Set(result.sections.flatMap { $0.evidence.map(\.id) })
+                        let note = MemoryNotebookEntry(id: UUID(), date: Date(), title: result.title,
+                            text: plainText(result), sourceIDs: ids.compactMap { origins[$0]?.id }.sorted())
+                        notes.insert(note, at: 0)
+                        guard notes.count <= 30, let encoded = try? JSONEncoder().encode(notes),
+                              encoded.count <= 2_000_000 else {
+                            message = "המחברת מלאה. מחק רשומה לפני שמירה נוספת."; return
+                        }
+                        notebookData = encoded
+                        message = "הטיוטה נשמרה במחברת המקומית."
+                    }
                     ShareLink(item: plainText(result)) {
                         Label("שתף טיוטת טקסט", systemImage: "square.and.arrow.up")
                     }
-                    Text("שיתוף עשוי לחשוף מידע אישי. הטיוטה אינה גיבוי ואינה נשמרת אוטומטית.")
+                    Text("שיתוף עשוי לחשוף מידע אישי. הטיוטה אינה נשמרת אוטומטית; אפשר לשמור אותה במחברת באופן מפורש.")
                         .font(.caption)
                 }
             }
         }
-        .navigationTitle("סטודיו AI")
+        .navigationTitle(notebookOnly ? "מחברת הזיכרון" : "סטודיו AI")
         .onChange(of: items) { _, _ in resetApproval() }
         .onChange(of: title) { _, _ in resetApproval() }
         .onChange(of: language) { _, _ in resetApproval() }
@@ -637,6 +882,62 @@ struct GroundedArticleView: View {
         .onDisappear {
             work?.cancel(); work = nil; running = false; token = ""; approved = false
         }
+    }
+    private struct NotebookMatch {
+        let note: MemoryNotebookEntry
+        let words: [String]
+        let score: Double
+    }
+    private func notebookWords(_ note: MemoryNotebookEntry) -> Set<String> {
+        let ignored: Set<String> = ["מקור", "טיוטת", "לבדיקה", "screenmind", "שלנו", "שלהם", "מתוך", "אפשר", "ניתן", "מידע", "המקור", "with", "from", "this", "that", "have", "source"]
+        return Set((note.title + " " + note.text).lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 && !ignored.contains($0) && $0.contains(where: { $0.isLetter }) })
+    }
+    private func possibleMatches(for note: MemoryNotebookEntry) -> [NotebookMatch] {
+        let words = notebookWords(note)
+        guard !words.isEmpty else { return [] }
+        return notebook.compactMap { other -> NotebookMatch? in
+            guard other.id != note.id, Set(note.sourceIDs).isDisjoint(with: other.sourceIDs) else { return nil }
+            let otherWords = notebookWords(other)
+            let shared = words.intersection(otherWords)
+            let score = Double(shared.count) / Double(max(1, words.union(otherWords).count))
+            guard shared.count >= 3, score >= 0.15 else { return nil }
+            return NotebookMatch(note: other, words: Array(shared.sorted().prefix(8)), score: score)
+        }.sorted { lhs, rhs in
+            lhs.score == rhs.score ? lhs.note.id.uuidString < rhs.note.id.uuidString : lhs.score > rhs.score
+        }.prefix(3).map { $0 }
+    }
+    private func notebookTopic(_ note: MemoryNotebookEntry) -> String {
+        var counts: [String: Int] = [:]
+        for id in Set(note.sourceIDs) {
+            if let capture = library.capture(id), !capture.isArchived {
+                counts[capture.effectiveCollection, default: 0] += 1
+            }
+        }
+        let ranked = counts.sorted { lhs, rhs in
+            lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+        }
+        guard let first = ranked.first else { return "ללא נושא" }
+        if ranked.count > 1 && ranked[1].value == first.value { return "מספר נושאים" }
+        return first.key
+    }
+    private func sharedSources(_ first: MemoryNotebookEntry, _ second: MemoryNotebookEntry) -> [String] {
+        Set(first.sourceIDs).intersection(second.sourceIDs).filter { id in
+            guard let capture = library.capture(id) else { return false }
+            return !capture.isArchived
+        }.sorted()
+    }
+    private func relatedNotes(to note: MemoryNotebookEntry) -> [MemoryNotebookEntry] {
+        notebook.filter { $0.id != note.id && !sharedSources(note, $0).isEmpty }
+            .sorted { lhs, rhs in
+                let left = sharedSources(note, lhs).count
+                let right = sharedSources(note, rhs).count
+                return left == right ? lhs.id.uuidString < rhs.id.uuidString : left > right
+            }
+    }
+    private var notebook: [MemoryNotebookEntry] {
+        (try? JSONDecoder().decode([MemoryNotebookEntry].self, from: notebookData)) ?? []
     }
     private func resetApproval() {
         approved = false; result = nil

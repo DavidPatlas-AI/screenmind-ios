@@ -7,6 +7,8 @@ struct MemoryLexicalIndex: Sendable {
         let id: String
         let weights: [String: Double]
         let related: [String: Double]
+        let title: String
+        let text: String
     }
     private let documents: [Document]
     private let frequencies: [String: Int]
@@ -18,7 +20,6 @@ struct MemoryLexicalIndex: Sendable {
     // Deliberately small, auditable vocabulary. Ambiguous aliases are omitted.
     private static let concepts: [[String]] = [
         ["משכנתה","משכנתא","mortgage","ипотека"],
-        ["חשבונית","invoice","factura","facture","rechnung","счёт"],
         ["מתכון","recipe","рецепт","receta","recette","rezept"],
         ["טיסה","flight","рейс","vuelo"],
         ["מלון","hotel","отель","hôtel"],
@@ -32,7 +33,19 @@ struct MemoryLexicalIndex: Sendable {
         ["גיבוי","backup","резервирование","sauvegarde"],
         ["רחפן","drone","дрон"],
         ["מלגה","scholarship","стипендия","bourse"],
-        ["משאית","truck","грузовик","camion"]
+        ["משאית","truck","грузовик","camion"],
+        ["רכישה","קנייה","קניה","purchase","покупка"],
+        ["תקלה","באג","bug","неисправность"],
+        ["אבטחה","security","безопасность"],
+        ["הצפנה","encryption","шифрование"],
+        ["הוצאות","expenditure","expenses","расходы"],
+        ["משרה","דרושים","vacancy","вакансия"],
+        ["מבחן","בחינה","exam","экзамен"],
+        ["מצגת","presentation","презентация"],
+        ["תזכורת","תזכורות","reminder","напоминание"],
+        ["מסמך","מסמכים","document","документ"],
+        ["משימה","משימות","task","задача"],
+        ["חשבונית","חשבוניות","invoice","factura","facture","rechnung","счёт"]
     ]
     private static let conceptKeys: [String: String] = {
         var result: [String: String] = [:]
@@ -49,6 +62,20 @@ struct MemoryLexicalIndex: Sendable {
         let all = normalize(query).split(separator: " ").map(String.init)
         let useful = all.filter { !stopWords.contains($0) }
         return Array(Set(useful)).sorted()
+    }
+    // Symmetric single-edit signatures for longer Hebrew words only.
+    // Keep these separate from exact and curated concept matches.
+    private static func fuzzyKeys(_ word: String) -> Set<String> {
+        guard (5...32).contains(word.count),
+              word.unicodeScalars.allSatisfy({ (0x05D0...0x05EA).contains($0.value) }) else { return [] }
+        let letters = Array(word)
+        var keys: Set<String> = ["fuzzy:" + word]
+        for index in letters.indices {
+            var shortened = letters
+            shortened.remove(at: index)
+            keys.insert("fuzzy:" + String(shortened))
+        }
+        return keys
     }
     private static func keys(_ word: String) -> Set<String> {
         var keys: Set<String> = [word]
@@ -77,28 +104,34 @@ struct MemoryLexicalIndex: Sendable {
             var related: [String: Double] = [:]
             for (word, weight) in weights {
                 for key in Self.keys(word) { related[key] = max(related[key] ?? 0, weight) }
+                if weight >= 2 {
+                    for key in Self.fuzzyKeys(word) { related[key] = max(related[key] ?? 0, weight) }
+                }
             }
             for key in related.keys { counts[key, default: 0] += 1 }
-            docs.append(Document(id: capture.id, weights: weights, related: related))
+            docs.append(Document(id: capture.id, weights: weights, related: related,
+                                 title: Self.normalize(capture.title), text: Self.normalize(capture.text)))
         }
         documents = docs
         frequencies = counts
     }
     func search(_ query: String, limit: Int = 60) -> [MemorySearchHit] {
-        let queryTerms = Self.terms(String(query.prefix(500)))
+        let normalizedQuery = Self.normalize(String(query.prefix(500)))
+        let queryTerms = Self.terms(normalizedQuery)
+        let phrase = normalizedQuery.split(separator: " ").filter { !Self.stopWords.contains(String($0)) }.joined(separator: " ")
         guard !queryTerms.isEmpty, limit > 0 else { return [] }
-        let queries = queryTerms.map { term -> (String, Set<String>, Double) in
+        let queries = queryTerms.map { term -> (String, Set<String>, Set<String>, Double) in
             let keys = Self.keys(term)
             let count = keys.map { frequencies[$0] ?? 0 }.max() ?? 0
             let rarity = 1 + log(Double(documents.count + 1) / Double(count + 1))
-            return (term, keys, rarity)
+            return (term, keys, Self.fuzzyKeys(term), rarity)
         }
         var results: [MemorySearchHit] = []
         for doc in documents {
             if Task.isCancelled { break }
-            var matched = 0, direct = 0, sourceMatches = 0
+            var matched = 0, direct = 0, sourceMatches = 0, fuzzy = 0
             var score = 0.0
-            for (term, keys, rarity) in queries {
+            for (term, keys, fuzzyKeys, rarity) in queries {
                 if let weight = doc.weights[term], weight >= 2 {
                     direct += 1; matched += 1; sourceMatches += 1
                     score += weight * rarity
@@ -106,6 +139,9 @@ struct MemoryLexicalIndex: Sendable {
                     matched += 1
                     if weight >= 2 { sourceMatches += 1 }
                     score += weight * rarity * 0.55
+                } else if let weight = fuzzyKeys.compactMap({ doc.related[$0] }).max() {
+                    matched += 1; sourceMatches += 1; fuzzy += 1
+                    score += weight * rarity * 0.15
                 }
             }
             // A category alone cannot prove the source contains the answer.
@@ -113,11 +149,14 @@ struct MemoryLexicalIndex: Sendable {
             let kind: MemorySearchHit.Match
             let base: Double
             if direct == queries.count { kind = .exact; base = 100 }
-            else if matched == queries.count { kind = .related; base = 75 }
+            else if matched == queries.count && fuzzy == 0 { kind = .related; base = 75 }
             else { kind = .partial; base = 50 }
             // Bound the bonus to keep match tiers stable regardless of corpus size.
+            let phraseBonus: Double = queryTerms.count > 1 && !phrase.isEmpty
+                ? ((" " + doc.title + " ").contains(" " + phrase + " ") ? 8
+                   : ((" " + doc.text + " ").contains(" " + phrase + " ") ? 4 : 0)) : 0
             results.append(MemorySearchHit(id: doc.id,
-                score: base + min(20, score / Double(queries.count)), match: kind))
+                score: base + min(20, score / Double(queries.count) + phraseBonus), match: kind))
         }
         return Array(results.sorted {
             $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score

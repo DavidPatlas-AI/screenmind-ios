@@ -6,6 +6,76 @@
 	};
 	"objectVersion" = 56;
 	"objects" = {
+		"ABCD00000000000000000005" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ScreenMind/MemoryDiscovery.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000005" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000005";
+		};
+		"ABCD00000000000000000006" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ScreenMind/BackupInspectionView.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000006" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000006";
+		};
+		"ABCD00000000000000000000" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/LibraryBackup.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000000" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000000";
+		};
+		"ABCD00000000000000000001" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/VerifiedBackup.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000001" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000001";
+		};
+		"ABCD00000000000000000002" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Shared/BackupEncryption.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000002" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000002";
+		};
+		"ABCD00000000000000000003" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ScreenMind/MemoryLexicalIndex.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000003" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000003";
+		};
+		"ABCD00000000000000000004" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ScreenMind/ProjectStory.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"ABCD10000000000000000004" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ABCD00000000000000000004";
+		};
 		"0FC1205A42E797252840533B" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -213,6 +283,13 @@
 			"isa" = "PBXGroup";
 			"name" = "Sources";
 			"children" = (
+				"ABCD00000000000000000005",
+				"ABCD00000000000000000006",
+				"ABCD00000000000000000000",
+				"ABCD00000000000000000001",
+				"ABCD00000000000000000002",
+				"ABCD00000000000000000003",
+				"ABCD00000000000000000004",
 				"0FC1205A42E797252840533B",
 				"A3491A99DBD2A5A75C0A70EB",
 				"E6A18FD3D251F5B458EBF1F3",
@@ -550,6 +627,13 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = (
+				"ABCD10000000000000000005",
+				"ABCD10000000000000000006",
+				"ABCD10000000000000000000",
+				"ABCD10000000000000000001",
+				"ABCD10000000000000000002",
+				"ABCD10000000000000000003",
+				"ABCD10000000000000000004",
 				"5FA3B6841DF2B65371483BA6",
 				"6B667895D273DF57B4CC4C79",
 				"94B93468CA9234C6C3B61C7F",
