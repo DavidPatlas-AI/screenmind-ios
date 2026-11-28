@@ -35,6 +35,7 @@ on:
       - screenmind-v2-beta-hardening
       - screenmind-v2-beta-polish
       - screenmind-v5-beta-candidate
+      - screenmind-v5-memory-evolution
 permissions:
   contents: read
 concurrency:
