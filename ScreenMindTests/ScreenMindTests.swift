@@ -192,6 +192,56 @@ import UIKit
         XCTAssertNil(decoded.photoCreatedAt)
         XCTAssertEqual(decoded.sourceDate, decoded.createdAt)
     }
+    func testMemoryEvolutionPreservesChangedNumbersAndRealChronology() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var older = idea("old-evolution", title: "Plan", text: "github.com/example/evolution\nBudget 100\nCommon line", at: now)
+        older.photoCreatedAt = now.addingTimeInterval(-200)
+        var newer = idea("new-evolution", title: "Plan", text: "github.com/example/evolution\nBudget 200\nCommon   line", at: now.addingTimeInterval(-500))
+        newer.photoCreatedAt = now.addingTimeInterval(-100)
+        let undated = idea("unknown-evolution", title: "Plan", text: "github.com/example/evolution\nBudget 999", at: now)
+        var future = newer
+        future.id = "future-evolution"
+        future.photoCreatedAt = now.addingTimeInterval(100)
+        var archived = newer
+        archived.id = "archived-evolution"
+        archived.isArchived = true
+        archived.photoCreatedAt = now
+        let report = MemoryEvolution.build(from: [newer, older, older, undated, future, archived], now: now)
+        XCTAssertEqual(report.comparableProjects, 1)
+        XCTAssertEqual(report.items.count, 1)
+        XCTAssertEqual(report.items.first?.olderID, older.id)
+        XCTAssertEqual(report.items.first?.newerID, newer.id)
+        XCTAssertEqual(report.items.first?.earlierOnly, ["Budget 100"])
+        XCTAssertEqual(report.items.first?.laterOnly, ["Budget 200"])
+        XCTAssertEqual(report.items.first?.sharedCount, 1)
+    }
+
+    func testMemoryEvolutionDoesNotInferChangesFromUnknownOrEqualDates() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var a = idea("e-a", title: "Plan", text: "github.com/example/evolution\nVersion one", at: now)
+        var b = idea("e-b", title: "Plan", text: "github.com/example/evolution\nVersion two", at: now.addingTimeInterval(100))
+        a.photoCreatedAt = now
+        XCTAssertTrue(MemoryEvolution.build(from: [a, b], now: now).items.isEmpty)
+        b.photoCreatedAt = now
+        XCTAssertTrue(MemoryEvolution.build(from: [a, b], now: now).items.isEmpty)
+        b.photoCreatedAt = now.addingTimeInterval(-100)
+        b.text = a.text
+        let report = MemoryEvolution.build(from: [a, b], now: now)
+        XCTAssertEqual(report.comparableProjects, 1)
+        XCTAssertTrue(report.items.isEmpty)
+    }
+
+    func testMemoryEvolutionDisclosesClippedEvidence() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var a = idea("clip-a", title: "Plan", text: "github.com/example/evolution\n" + String(repeating: "A", count: 300), at: now)
+        a.photoCreatedAt = now.addingTimeInterval(-100)
+        var b = idea("clip-b", title: "Plan", text: "github.com/example/evolution\n" + String(repeating: "B", count: 300), at: now)
+        b.photoCreatedAt = now
+        let item = MemoryEvolution.build(from: [a, b], now: now).items.first
+        XCTAssertEqual(item?.limited, true)
+        XCTAssertEqual(item?.laterOnly.first?.count, 240)
+    }
+
     func testProjectDiscoveryUsesExplicitRepeatedIdentityAndChronology() {
         let now = Date(timeIntervalSince1970: 1_763_769_600)
         var newer = idea("new", title: "Build", text: "https://github.com/example/my-app/issues/7", at: now)
